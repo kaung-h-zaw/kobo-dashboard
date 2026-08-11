@@ -132,13 +132,20 @@ app.get("/api/display", requireDeviceAuthentication, (request, response) => {
 });
 
 app.get("/screens/dashboard.png", requireScreenSignature, async (request, response) => {
-  const appleData = await readAppleData();
-  const weather = await getWeather();
-  const dashboard = buildDashboardData(appleData, { timeZone: TIME_ZONE, weather });
-  const image = await generateDashboardPng(dashboard, {
-    assetBaseUrl: getBaseUrl(request),
-    rotate: process.env.KOBO_ROTATE_IMAGE !== "false",
-  });
+  let image;
+  try {
+    const appleData = await readAppleData();
+    const weather = await getWeather();
+    const dashboard = buildDashboardData(appleData, { timeZone: TIME_ZONE, weather });
+    image = await generateDashboardPng(dashboard, {
+      assetBaseUrl: getBaseUrl(request),
+      rotate: process.env.KOBO_ROTATE_IMAGE !== "false",
+    });
+  } catch (error) {
+    // Keep secrets out of logs while retaining the useful browser-launch error.
+    console.error("Dashboard image generation failed:", error?.message || "Unknown error");
+    return response.status(500).json({ error: "Dashboard image generation failed" });
+  }
 
   response.set("Cache-Control", "private, no-store").type("png").send(image);
 });

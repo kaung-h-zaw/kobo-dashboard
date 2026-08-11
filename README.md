@@ -67,7 +67,7 @@ Pushes to the connected GitHub branch trigger the normal Render deployment. The 
 
 The data file is intentionally simple. Render's filesystem is ephemeral, so `data/apple-data.json` can disappear after a restart, redeployment, or free-instance spin-down. The Mac LaunchAgent resends the full snapshot every five minutes, which restores it automatically.
 
-`npm install` also downloads the Chromium binary used to render Framework HTML. `.puppeteerrc.cjs` keeps that binary in the service build directory so it remains available when Render starts the service. Node.js 20 or newer is required.
+`npm install` also runs an explicit Puppeteer browser installation. `.puppeteerrc.cjs` keeps that Chrome binary in the service build directory so it remains available when Render starts the service. Node.js 20 or newer is required.
 
 ## 4. Render environment variables
 
@@ -354,6 +354,10 @@ To deploy, commit and push these files to the GitHub branch connected to Render.
 
 - Test <https://kobo-dashboard-7ub6.onrender.com/health>.
 - A free Render service can need time to wake after inactivity. The helper reports non-2xx status codes and tries again at the next five-minute LaunchAgent run.
+
+### Native Kobo client shows logs over the old Kobo home screen
+
+This means `/api/display` was retrieved, but FBInk could not display the downloaded image. Test the signed image directly and confirm it returns `200` with `Content-Type: image/png`; an HTTP 500 JSON response cannot be decoded by FBInk. In Render logs, look for `Dashboard image generation failed:`. After changing Puppeteer setup, use **Manual Deploy → Clear build cache & deploy** so `npm install` downloads Chrome again. Set `DebugToScreen` to `0` in `.adds/TRMNL/config.json` after troubleshooting.
 
 ### No Apple data after a restart
 
