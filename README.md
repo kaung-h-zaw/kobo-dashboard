@@ -159,3 +159,4 @@ If Fetch screen now reports HTTP 401, make sure the plugin API key and Render `D
 - [Official TRMNL ImageMagick guide](https://docs.trmnl.com/go/imagemagick-guide) — monochrome PNG guidance
 
 The next application step is replacing sample data with calendar, task, and weather integrations. Their secrets should remain in Render environment variables rather than being committed to GitHub.
+# kobo-dashboard
