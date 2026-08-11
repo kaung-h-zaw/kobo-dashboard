@@ -4,7 +4,6 @@
   "description": "A lightweight e-ink dashboard for Kobo devices running KOReader",
   "main": "server.js",
   "scripts": {
-    "postinstall": "node scripts/install-browser.js",
     "start": "node server.js"
   },
   "engines": {

@@ -1,10 +1,12 @@
 const puppeteer = require("puppeteer");
 const sharp = require("sharp");
+const { installBrowser } = require("./scripts/install-browser");
 
 const SCREEN_WIDTH = 1024;
 const SCREEN_HEIGHT = 758;
 
 let browserPromise;
+let browserInstallationPromise;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -151,7 +153,19 @@ function renderDashboardHtml(data, { preview = false, assetBaseUrl = "" } = {}) 
 </html>`;
 }
 
+async function prepareDashboardRenderer() {
+  if (!browserInstallationPromise) {
+    browserInstallationPromise = installBrowser().catch((error) => {
+      browserInstallationPromise = undefined;
+      throw error;
+    });
+  }
+  return browserInstallationPromise;
+}
+
 async function getBrowser() {
+  await prepareDashboardRenderer();
+
   if (!browserPromise) {
     browserPromise = puppeteer
       .launch({
@@ -206,6 +220,7 @@ module.exports = {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
   generateDashboardPng,
+  prepareDashboardRenderer,
   renderDashboardHtml,
   renderTrmnlScreen,
 };

@@ -44,12 +44,12 @@ async function installBrowser() {
     fs.rmSync(browserDirectory, { recursive: true, force: true });
   }
 
+  console.log(`Installing Puppeteer Chrome ${buildId}.`);
   await install({
     browser,
     buildId,
     cacheDir,
     platform,
-    downloadProgressCallback: "default",
   });
 
   if (!fs.existsSync(executablePath)) {
@@ -59,7 +59,11 @@ async function installBrowser() {
   console.log("Puppeteer Chrome installation verified.");
 }
 
-installBrowser().catch((error) => {
-  console.error(error.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  installBrowser().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { installBrowser };

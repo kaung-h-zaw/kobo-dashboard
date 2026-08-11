@@ -14,7 +14,11 @@ const {
 } = require("./src/appleData");
 const { buildDashboardData, buildPreviewAppleData } = require("./src/dashboard");
 const { getWeather } = require("./src/weather");
-const { generateDashboardPng, renderDashboardHtml } = require("./screen");
+const {
+  generateDashboardPng,
+  prepareDashboardRenderer,
+  renderDashboardHtml,
+} = require("./screen");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -168,4 +172,9 @@ app.use((error, request, response, next) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Kobo dashboard listening on http://${HOST}:${PORT}`);
+  prepareDashboardRenderer()
+    .then(() => console.log("Dashboard renderer is ready."))
+    .catch((error) => {
+      console.error("Dashboard renderer preparation failed:", error?.message || "Unknown error");
+    });
 });
