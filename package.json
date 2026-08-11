@@ -7,10 +7,11 @@
     "start": "node server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "express": "^5.1.0",
+    "puppeteer": "^24.34.0",
     "sharp": "^0.35.3"
   }
 }

@@ -2,20 +2,30 @@
 
 ## 1. What this project does
 
-This project turns a Kobo Nia running KOReader into a landscape Apple Calendar and Reminders dashboard. A small Swift program on the Mac reads iCloud-synced data through Apple's public EventKit framework and uploads JSON to one Node.js Web Service on Render. The server creates a signed, monochrome PNG for the official TRMNL KOReader plugin.
+This project turns a Kobo Nia running KOReader into a landscape Apple Calendar, Reminders, and live-weather dashboard. A small Swift app on the Mac reads iCloud-synced data through Apple's public EventKit framework and uploads JSON to one Node.js Web Service on Render. The server adds cached current weather and creates a signed, monochrome PNG for the official TRMNL Kobo client.
 
-There is no Docker, database, Redis, browser automation, background worker, Apple password, private Apple API, or iCloud scraping.
+The dashboard UI uses the official **TRMNL Framework 3.2.0** rather than project-specific imitation CSS. Its CSS, JavaScript runtime, and TRMNL font files are committed under `public/`, so a deployed screen never depends on a CDN. Headless Chromium renders that real framework page to a PNG; this is the same general rendering approach used by TRMNL's official Node BYOS example.
+
+There is no Docker, database, Redis, background worker, Apple password, private Apple API, or iCloud scraping.
 
 Routes:
 
 - `GET /` — public sample-data browser preview
 - `GET /dashboard` — public sample-data landscape dashboard
+- `GET /preview/trmnl` — framed, full-size TRMNL Framework browser preview
 - `GET /api/dashboard` — public sample dashboard JSON; never contains Apple data
 - `GET /health` — public health check
 - `POST /api/apple-sync` — authenticated Apple data upload
 - `GET /api/apple-data` — authenticated raw-data debugging endpoint
 - `GET /api/display` — authenticated TRMNL metadata endpoint
 - `GET /screens/dashboard.png?...` — short-lived signed Kobo image URL
+
+Official implementation references:
+
+- [TRMNL Framework releases](https://trmnl.com/framework/releases) — pinned release 3.2.0
+- [TRMNL Framework documentation](https://trmnl.com/framework/docs/3.1)
+- [Official `usetrmnl/trmnl-framework` repository](https://github.com/usetrmnl/trmnl-framework)
+- [Official Node BYOS image server](https://github.com/usetrmnl/byos_node_lite)
 
 ## 2. Architecture
 
@@ -33,7 +43,11 @@ POST /api/apple-sync on one Render Web Service
       |
 data/apple-data.json (temporary Render filesystem)
       |
-1024 x 758 monochrome PNG
+TRMNL Framework HTML at a logical 1024 x 758
+      |
+Headless Chromium + monochrome conversion + 90° rotation
+      |
+physical 758 x 1024 PNG
       |
 GET /api/display -> signed image_url
       |
@@ -53,6 +67,8 @@ Pushes to the connected GitHub branch trigger the normal Render deployment. The 
 
 The data file is intentionally simple. Render's filesystem is ephemeral, so `data/apple-data.json` can disappear after a restart, redeployment, or free-instance spin-down. The Mac LaunchAgent resends the full snapshot every five minutes, which restores it automatically.
 
+`npm install` also downloads the Chromium binary used to render Framework HTML. `.puppeteerrc.cjs` keeps that binary in the service build directory so it remains available when Render starts the service. Node.js 20 or newer is required.
+
 ## 4. Render environment variables
 
 In the Render service, open **Environment** and configure:
@@ -64,7 +80,12 @@ In the Render service, open **Environment** and configure:
 | `BASE_URL` | `https://kobo-dashboard-7ub6.onrender.com` |
 | `TIMEZONE` | `Asia/Bangkok` |
 | `APPLE_SYNC_SECRET` | A new random secret used only by the Mac helper |
-| `KOBO_ROTATE_IMAGE` | `false` initially |
+| `KOBO_ROTATE_IMAGE` | `true` |
+| `WEATHER_LOCATION` | `Bangkok` |
+| `WEATHER_LATITUDE` | `13.7563` |
+| `WEATHER_LONGITUDE` | `100.5018` |
+
+Weather comes from Open-Meteo's current-conditions API and does not need an API key. The server caches it in memory for 15 minutes. If the request times out or Open-Meteo is unavailable, the last successful conditions remain visible; before the first successful request, the dashboard uses the existing Bangkok placeholder.
 
 Generate the new Apple sync secret on the Mac:
 
@@ -80,16 +101,16 @@ The helper requires macOS 13 or newer and the Apple command-line developer tools
 
 ```bash
 cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
-swift build -c release
+./scripts/build-app.sh
 ```
 
-The executable will be:
+The signed local app bundle will be:
 
 ```text
-/Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/release/KoboAppleSync
+/Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/KoboAppleSync.app
 ```
 
-Rebuild the helper whenever `main.swift`, `Package.swift`, or its permission descriptions change. Run the final release binary manually once before installing the LaunchAgent so macOS can show its permission prompts.
+The script builds the Swift release executable, creates a standard macOS `.app` bundle, copies its privacy-aware `Info.plist`, enables Hardened Runtime, adds the Calendar/EventKit entitlement, and ad-hoc signs the finished app for local use. Rebuild whenever the Swift source, package, plist, entitlement, or build script changes.
 
 The helper reads:
 
@@ -102,28 +123,57 @@ EventKit only returns calendars available for the requested entity type. Apple's
 
 ## 6. EventKit permissions
 
-First run a dry sync. It reads and prints data but uploads nothing:
+Request permissions before reading or uploading anything:
 
 ```bash
 cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
-TIMEZONE=Asia/Bangkok .build/release/KoboAppleSync --dry-run
+./scripts/request-permissions.sh
 ```
 
-Approve both prompts:
+Do not execute `KoboAppleSync.app/Contents/MacOS/KoboAppleSync` directly from a VS Code or other IDE terminal. macOS attributes a directly executed child process's privacy request to the IDE, which does not contain this app's EventKit entitlement or purpose strings. The script launches the bundle through macOS LaunchServices and prints the app's captured output afterward.
 
-- Apple Reminders access
-- Apple Calendar access
-
-Expected terminal messages include:
+The terminal prints the current status before requesting access. A first run should progress like this:
 
 ```text
-Apple Reminders permission: OK
-Apple Calendar permission: OK
-Found 8 incomplete reminders
-Found 5 upcoming events
+Apple Calendar authorization status: notDetermined
+Apple Calendar authorization status: fullAccess
+Apple Reminders authorization status: notDetermined
+Apple Reminders authorization status: fullAccess
+EventKit permission check complete.
 ```
 
-If access was denied, open **System Settings → Privacy & Security → Calendars** and **Reminders**, enable access for the helper or Terminal, then rerun it. The helper never requests an Apple ID or password.
+On macOS 13, the granted status is printed as `authorized`; on macOS 14 and later it is `fullAccess`. Other exact values include `denied`, `restricted`, and `writeOnly`. The helper requests only when the status is `notDetermined`, and it uses full access because it reads data.
+
+Approve both macOS prompts:
+
+- “Kobo Apple Sync” would like to access your calendars
+- “Kobo Apple Sync” would like to access your reminders
+
+The prompt text comes from the app bundle:
+
+```text
+Kobo Dashboard needs access to Calendar to display upcoming events on my Kobo.
+Kobo Dashboard needs access to Reminders to display tasks on my Kobo.
+```
+
+After approval, **Kobo Apple Sync** appears under **System Settings → Privacy & Security → Calendars** and **Reminders**. The entry belongs to the app bundle, not Terminal.
+
+If either status is already `denied`, macOS will not show that prompt again. Reset only this app's decisions, then rerun the permissions command:
+
+```bash
+tccutil reset Calendar com.kaung.KoboAppleSync
+tccutil reset Reminders com.kaung.KoboAppleSync
+cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
+./scripts/request-permissions.sh
+```
+
+If a per-app reset says the bundle identifier is unknown, register the built bundle once and retry:
+
+```bash
+open -R /Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/KoboAppleSync.app
+```
+
+As a broader development-only fallback, `tccutil reset Calendar` and `tccutil reset Reminders` reset those permissions for every app in the current user account. The helper never requests an Apple ID or password.
 
 ## 7. Manual Apple sync test
 
@@ -131,7 +181,7 @@ If access was denied, open **System Settings → Privacy & Security → Calendar
 
 ```bash
 cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
-TIMEZONE=Asia/Bangkok .build/release/KoboAppleSync --dry-run
+TIMEZONE=Asia/Bangkok ./scripts/run-sync.sh --dry-run
 ```
 
 The printed JSON should contain `syncedAt`, `reminders`, and `events`.
@@ -145,7 +195,7 @@ cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
 APPLE_SYNC_SECRET='REPLACE_WITH_YOUR_SECRET' \
 KOBO_SERVER_URL='https://kobo-dashboard-7ub6.onrender.com' \
 TIMEZONE='Asia/Bangkok' \
-.build/release/KoboAppleSync
+./scripts/run-sync.sh
 ```
 
 A successful upload ends with:
@@ -241,21 +291,41 @@ After editing, run the `bootstrap` and `kickstart` commands again. A LaunchAgent
 
 `GET /api/display` still accepts either a matching `access-token` or the configured `ALLOWED_DEVICE_ID`. It returns `image_url`, `filename`, and `refresh_rate: 1800`. The image URL is signed for five minutes because the plugin does not forward authentication headers when downloading it.
 
-## 10. Landscape mode
+## 10. TRMNL Framework screen and landscape mode
 
-The normal generated image is exactly **1024 × 758**. Begin with:
+The logical browser canvas is exactly **1024 × 758**. Preview it locally with:
 
-```text
-KOBO_ROTATE_IMAGE=false
+```bash
+npm install
+npm start
 ```
 
-Set KOReader/Kobo to landscape orientation. If the plugin or framebuffer instead needs portrait pixel dimensions and the dashboard appears sideways, change Render to:
+Then open <http://localhost:3000/preview/trmnl>. `/dashboard` uses the same unframed screen, while `/` remains a convenient framed sample-data preview.
+
+The committed official release assets are:
+
+```text
+public/trmnl/plugins.min.css
+public/trmnl/plugins.min.js
+public/trmnl/RELEASE_NOTES.md
+public/trmnl/framework_colors.resolved.json
+public/fonts/Inter*.ttf
+public/fonts/TRMNL12-*
+public/fonts/TRMNL16-*
+public/fonts/TRMNL21-*
+```
+
+The screen uses the documented `screen > view view--full > layout + title_bar` hierarchy. Its content uses Framework Grid, Flex, Item, Title, Value, Label, Description, Divider, spacing/gap, `data-clamp`, and `data-overflow` primitives. Custom CSS is limited to the Kobo Nia's 1024 × 758 logical dimensions and browser-preview positioning/background.
+
+For the native Kobo client, keep:
 
 ```text
 KOBO_ROTATE_IMAGE=true
 ```
 
-That rotates the completed landscape dashboard 90 degrees and serves a 758 × 1024 PNG. Change only this variable; the dashboard layout itself remains landscape.
+The server renders the logical landscape page and rotates the finished bitmap 90 degrees, producing the required **758 × 1024** physical PNG. If a different client already rotates downloaded images, set this variable to `false` to serve the unrotated 1024 × 758 bitmap.
+
+To deploy, commit and push these files to the GitHub branch connected to Render. Keep the existing single Web Service, `npm install` Build Command, and `npm start` Start Command. No second service or Docker image is needed.
 
 ## 11. Troubleshooting
 

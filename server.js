@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const {
   createScreenSignature,
   requireAppleDataAuthentication,
@@ -12,6 +13,7 @@ const {
   writeAppleData,
 } = require("./src/appleData");
 const { buildDashboardData, buildPreviewAppleData } = require("./src/dashboard");
+const { getWeather } = require("./src/weather");
 const { generateDashboardPng, renderDashboardHtml } = require("./screen");
 
 const app = express();
@@ -24,6 +26,7 @@ const SCREEN_URL_LIFETIME_SECONDS = 300;
 // Render terminates HTTPS before forwarding requests to Express.
 app.set("trust proxy", true);
 app.use(express.json({ limit: "256kb" }));
+app.use(express.static(path.join(__dirname, "public"), { index: false, maxAge: "1d" }));
 
 function getBaseUrl(request) {
   const configuredBaseUrl = process.env.BASE_URL?.trim();
@@ -36,28 +39,44 @@ function getScreenFilename() {
   return `kobo-dashboard-${minute}.png`;
 }
 
-function getPreviewData() {
+async function getPreviewData() {
   const now = new Date();
+  const weather = await getWeather();
   return buildDashboardData(buildPreviewAppleData(now), {
     now,
     timeZone: TIME_ZONE,
+    weather,
   });
 }
 
 // Public browser preview uses sample data so private Apple data is never exposed.
-app.get("/", (request, response) => {
-  response.type("html").send(renderDashboardHtml(getPreviewData(), { preview: true }));
+app.get("/", async (request, response) => {
+  response.type("html").send(renderDashboardHtml(await getPreviewData(), {
+    preview: true,
+    assetBaseUrl: getBaseUrl(request),
+  }));
 });
 
-app.get("/dashboard", (request, response) => {
-  response.type("html").send(renderDashboardHtml(getPreviewData()));
+app.get("/dashboard", async (request, response) => {
+  response.type("html").send(renderDashboardHtml(await getPreviewData(), {
+    assetBaseUrl: getBaseUrl(request),
+  }));
+});
+
+// Full-size browser preview of the locally vendored TRMNL Framework screen.
+app.get("/preview/trmnl", async (request, response) => {
+  response.type("html").send(renderDashboardHtml(await getPreviewData(), {
+    preview: true,
+    assetBaseUrl: getBaseUrl(request),
+  }));
 });
 
 // Preserve the original public dashboard API with non-private preview data.
-app.get("/api/dashboard", (request, response) => {
+app.get("/api/dashboard", async (request, response) => {
   const now = new Date();
   const preview = buildPreviewAppleData(now);
-  const dashboard = buildDashboardData(preview, { now, timeZone: TIME_ZONE });
+  const weather = await getWeather();
+  const dashboard = buildDashboardData(preview, { now, timeZone: TIME_ZONE, weather });
 
   response.json({
     date: dashboard.date,
@@ -114,9 +133,11 @@ app.get("/api/display", requireDeviceAuthentication, (request, response) => {
 
 app.get("/screens/dashboard.png", requireScreenSignature, async (request, response) => {
   const appleData = await readAppleData();
-  const dashboard = buildDashboardData(appleData, { timeZone: TIME_ZONE });
+  const weather = await getWeather();
+  const dashboard = buildDashboardData(appleData, { timeZone: TIME_ZONE, weather });
   const image = await generateDashboardPng(dashboard, {
-    rotate: process.env.KOBO_ROTATE_IMAGE === "true",
+    assetBaseUrl: getBaseUrl(request),
+    rotate: process.env.KOBO_ROTATE_IMAGE !== "false",
   });
 
   response.set("Cache-Control", "private, no-store").type("png").send(image);

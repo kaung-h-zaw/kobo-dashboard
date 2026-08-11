@@ -6,19 +6,23 @@
     <string>com.kaung.kobo-apple-sync</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/release/KoboAppleSync</string>
+        <string>/usr/bin/open</string>
+        <string>-n</string>
+        <string>-W</string>
+        <string>--stdout</string>
+        <string>/Users/kaunghtetzaw/Library/Logs/kobo-apple-sync.log</string>
+        <string>--stderr</string>
+        <string>/Users/kaunghtetzaw/Library/Logs/kobo-apple-sync-error.log</string>
+        <string>--env</string>
+        <string>APPLE_SYNC_SECRET=REPLACE_WITH_YOUR_SECRET</string>
+        <string>--env</string>
+        <string>KOBO_SERVER_URL=https://kobo-dashboard-7ub6.onrender.com</string>
+        <string>--env</string>
+        <string>TIMEZONE=Asia/Bangkok</string>
+        <string>/Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/KoboAppleSync.app</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/kaunghtetzaw/kobo-dashboard/mac-sync</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>APPLE_SYNC_SECRET</key>
-        <string>REPLACE_WITH_YOUR_SECRET</string>
-        <key>KOBO_SERVER_URL</key>
-        <string>https://kobo-dashboard-7ub6.onrender.com</string>
-        <key>TIMEZONE</key>
-        <string>Asia/Bangkok</string>
-    </dict>
     <key>StartInterval</key>
     <integer>300</integer>
     <key>RunAtLoad</key>

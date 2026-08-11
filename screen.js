@@ -1,165 +1,205 @@
+const puppeteer = require("puppeteer");
 const sharp = require("sharp");
 
 const SCREEN_WIDTH = 1024;
 const SCREEN_HEIGHT = 758;
 
-function escapeXml(value) {
+let browserPromise;
+
+function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+    .replaceAll("'", "&#39;");
 }
 
-function renderSimpleRows(rows, startX, startY) {
-  if (!rows.length) {
-    return `<text x="${startX}" y="${startY}" class="muted">No events</text>`;
-  }
-
-  return rows
-    .map(
-      (row, index) => `
-        <text x="${startX}" y="${startY + index * 55}" class="row-time">${escapeXml(row.time)}</text>
-        <text x="${startX + 86}" y="${startY + index * 55}" class="row-title">${escapeXml(row.title)}</text>`,
-    )
-    .join("");
-}
-
-function renderReminderRows(rows, startX, startY) {
-  let y = startY;
-  return rows
-    .map((row) => {
-      if (row.kind === "label") {
-        const output = `<text x="${startX}" y="${y}" class="group-label">${escapeXml(row.label)}</text>`;
-        y += 38;
-        return output;
-      }
-      if (row.kind === "empty") {
-        const output = `<text x="${startX}" y="${y}" class="muted">${escapeXml(row.title)}</text>`;
-        y += 48;
-        return output;
-      }
-
-      const suffix = row.suffix
-        ? `<text x="${startX + 296}" y="${y}" text-anchor="end" class="row-suffix">${escapeXml(row.suffix)}</text>`
-        : "";
-      const output = `
-        <text x="${startX}" y="${y}" class="marker">${escapeXml(row.marker)}</text>
-        <text x="${startX + 50}" y="${y}" class="row-title">${escapeXml(row.title)}</text>
-        ${suffix}`;
-      y += 48;
-      return output;
-    })
-    .join("");
-}
-
-function renderUpcomingRows(rows, startX, startY) {
-  let y = startY;
-  return rows
-    .map((row) => {
-      if (row.kind === "label") {
-        const output = `<text x="${startX}" y="${y}" class="group-label">${escapeXml(row.label)}</text>`;
-        y += 40;
-        return output;
-      }
-      if (row.kind === "empty") {
-        const output = `<text x="${startX}" y="${y}" class="muted">${escapeXml(row.title)}</text>`;
-        y += 48;
-        return output;
-      }
-
-      const output = `
-        <text x="${startX}" y="${y}" class="row-time">${escapeXml(row.time)}</text>
-        <text x="${startX + 86}" y="${y}" class="row-title">${escapeXml(row.title)}</text>`;
-      y += 52;
-      return output;
-    })
-    .join("");
-}
-
-function renderDashboardSvg(data) {
+function renderEmptyItem(message) {
   return `
-  <svg xmlns="http://www.w3.org/2000/svg" width="${SCREEN_WIDTH}" height="${SCREEN_HEIGHT}" viewBox="0 0 ${SCREEN_WIDTH} ${SCREEN_HEIGHT}">
-    <rect width="100%" height="100%" fill="white"/>
-    <style>
-      text { fill: black; font-family: Arial, Helvetica, sans-serif; }
-      .top-date { font-size: 34px; font-weight: 700; }
-      .top-time { font-size: 48px; font-weight: 700; }
-      .weather { font-size: 28px; font-weight: 700; }
-      .weather-detail { font-size: 17px; }
-      .section { font-size: 25px; font-weight: 700; letter-spacing: 2px; }
-      .group-label { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
-      .row-time { font-size: 21px; }
-      .row-title { font-size: 22px; font-weight: 700; }
-      .row-suffix { font-size: 17px; }
-      .marker { font-size: 20px; font-weight: 700; }
-      .muted { font-size: 21px; }
-      .footer { font-size: 18px; font-weight: 700; }
-    </style>
-    <clipPath id="left-column"><rect x="22" y="104" width="310" height="588"/></clipPath>
-    <clipPath id="center-column"><rect x="356" y="104" width="310" height="588"/></clipPath>
-    <clipPath id="right-column"><rect x="692" y="104" width="310" height="588"/></clipPath>
-
-    <text x="30" y="59" class="top-date">${escapeXml(data.date)}</text>
-    <text x="512" y="61" text-anchor="middle" class="top-time">${escapeXml(data.time)}</text>
-    <text x="994" y="48" text-anchor="end" class="weather">${escapeXml(data.weather.location)} ${escapeXml(data.weather.temperature)}</text>
-    <text x="994" y="72" text-anchor="end" class="weather-detail">${escapeXml(data.weather.condition)}</text>
-    <line x1="22" y1="92" x2="1002" y2="92" stroke="black" stroke-width="3"/>
-
-    <line x1="341" y1="110" x2="341" y2="698" stroke="black" stroke-width="2"/>
-    <line x1="682" y1="110" x2="682" y2="698" stroke="black" stroke-width="2"/>
-
-    <g clip-path="url(#left-column)">
-      <text x="30" y="137" class="section">TODAY</text>
-      ${renderSimpleRows(data.todayEvents, 30, 188)}
-    </g>
-
-    <g clip-path="url(#center-column)">
-      <text x="365" y="137" class="section">REMINDERS</text>
-      ${renderReminderRows(data.reminders, 365, 179)}
-    </g>
-
-    <g clip-path="url(#right-column)">
-      <text x="700" y="137" class="section">UPCOMING</text>
-      ${renderUpcomingRows(data.upcomingEvents, 700, 179)}
-    </g>
-
-    <line x1="22" y1="704" x2="1002" y2="704" stroke="black" stroke-width="3"/>
-    <text x="30" y="738" class="footer">Last synced: ${escapeXml(data.lastSynced)}</text>
-    <text x="994" y="738" text-anchor="end" class="footer">Dashboard refreshed: ${escapeXml(data.refreshedAt)}</text>
-  </svg>`;
+    <div class="item">
+      <div class="content">
+        <span class="description">${escapeHtml(message)}</span>
+      </div>
+    </div>`;
 }
 
-function renderDashboardHtml(data, { preview = false } = {}) {
+function renderEventItem(event) {
+  const details = [event.calendar, event.location].filter(Boolean).join(" · ");
+  return `
+    <div class="item">
+      <div class="meta"></div>
+      <div class="content">
+        <span class="title" data-clamp="1">${escapeHtml(event.title)}</span>
+        ${details ? `<span class="description" data-clamp="1">${escapeHtml(details)}</span>` : ""}
+        <div class="flex gap--small">
+          <span class="label label--underline">${escapeHtml(event.time)}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderReminderItem(reminder) {
+  const labels = [reminder.suffix, reminder.list].filter(Boolean);
+  return `
+    <div class="item${reminder.priority ? " item--emphasis-2" : ""}">
+      <div class="meta"></div>
+      <div class="content">
+        <span class="title" data-clamp="1">${escapeHtml(reminder.marker)} ${escapeHtml(reminder.title)}</span>
+        ${reminder.notes ? `<span class="description" data-clamp="1">${escapeHtml(reminder.notes)}</span>` : ""}
+        ${labels.length ? `<div class="flex gap--small">${labels.map((label) => `<span class="label label--underline">${escapeHtml(label)}</span>`).join("")}</div>` : ""}
+      </div>
+    </div>`;
+}
+
+function renderGroupedRows(rows, itemRenderer, emptyMessage) {
+  if (!rows.length) return renderEmptyItem(emptyMessage);
+
+  return rows
+    .map((row) => {
+      if (row.kind === "label") {
+        return `<span class="label label--small">${escapeHtml(row.label)}</span>`;
+      }
+      if (row.kind === "empty") return renderEmptyItem(row.title);
+      return itemRenderer(row);
+    })
+    .join("");
+}
+
+function renderTrmnlScreen(data) {
+  const todayItems = data.todayEvents.length
+    ? data.todayEvents.map(renderEventItem).join("")
+    : renderEmptyItem("No events today");
+  const reminders = renderGroupedRows(data.reminders, renderReminderItem, "No reminders");
+  const upcoming = renderGroupedRows(data.upcomingEvents, renderEventItem, "No upcoming events");
+
+  return `
+    <div class="screen screen--byod_custom screen--1bit screen--fonts-trmnl screen--no-bleed" data-device="kobo-nia">
+      <div class="view view--full">
+        <div class="layout">
+          <div class="grid grid--cols-3 gap--medium h--full">
+            <section class="flex flex--col flex--stretch-x gap--small">
+              <div class="flex flex--row flex--between flex--center-y">
+                <span class="title">Apple Calendar</span>
+                <span class="value value--large">${escapeHtml(data.time)}</span>
+              </div>
+              <span class="label">${escapeHtml(data.date)}</span>
+              <div class="divider"></div>
+              <div class="flex flex--col gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="520">
+                ${todayItems}
+              </div>
+            </section>
+
+            <section class="flex flex--col flex--stretch-x gap--small">
+              <span class="title">Apple Reminders</span>
+              <span class="label">Open tasks</span>
+              <div class="divider"></div>
+              <div class="flex flex--col gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="520">
+                ${reminders}
+              </div>
+            </section>
+
+            <section class="flex flex--col flex--stretch-x gap--small">
+              <span class="title">Upcoming Calendar</span>
+              <span class="label">Next 7 days</span>
+              <div class="divider"></div>
+              <div class="flex flex--col gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="520">
+                ${upcoming}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="title_bar">
+          <span class="title">Kobo Dashboard</span>
+          <span class="instance">Synced ${escapeHtml(data.lastSynced)} · ${escapeHtml(data.weather.location)} ${escapeHtml(data.weather.temperature)} · ${escapeHtml(data.weather.condition)}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderDashboardHtml(data, { preview = false, assetBaseUrl = "" } = {}) {
+  const base = assetBaseUrl.replace(/\/+$/, "");
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1024, initial-scale=1">
-  <title>Kobo Dashboard</title>
+  <title>Kobo Dashboard · TRMNL Framework</title>
+  <link rel="stylesheet" href="${escapeHtml(base)}/trmnl/plugins.min.css">
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; background: ${preview ? "#d8d8d8" : "#fff"}; }
-    body { min-width: 1024px; padding: ${preview ? "24px" : "0"}; }
-    .screen { width: 1024px; height: 758px; margin: 0 auto; background: #fff; ${preview ? "border: 2px solid #000;" : ""} }
-    svg { display: block; width: 1024px; height: 758px; }
+    html, body { margin: 0; }
+    body { background: ${preview ? "#d8d8d8" : "#fff"}; }
+    body > .screen { margin: ${preview ? "24px auto" : "0"}; }
+    .screen[data-device="kobo-nia"] {
+      --screen-w: ${SCREEN_WIDTH}px;
+      --screen-h: ${SCREEN_HEIGHT}px;
+      --screen-w-original: ${SCREEN_WIDTH}px;
+      --screen-h-original: ${SCREEN_HEIGHT}px;
+    }
+    .screen[data-device="kobo-nia"] .grid > section,
+    .screen[data-device="kobo-nia"] [data-overflow] {
+      min-width: 0;
+      overflow: hidden;
+    }
   </style>
 </head>
-<body><main class="screen">${renderDashboardSvg(data)}</main></body>
+<body class="environment trmnl">
+  ${renderTrmnlScreen(data)}
+  <script src="${escapeHtml(base)}/trmnl/plugins.min.js"></script>
+</body>
 </html>`;
 }
 
-async function generateDashboardPng(data, { rotate = false } = {}) {
-  let pipeline = sharp(Buffer.from(renderDashboardSvg(data)))
-    .grayscale()
-    .threshold(128);
+async function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = puppeteer
+      .launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      })
+      .then((browser) => {
+        browser.once("disconnected", () => {
+          browserPromise = undefined;
+        });
+        return browser;
+      })
+      .catch((error) => {
+        browserPromise = undefined;
+        throw error;
+      });
+  }
+  return browserPromise;
+}
 
-  if (rotate) pipeline = pipeline.rotate(90);
+async function generateDashboardPng(data, { rotate = true, assetBaseUrl = "" } = {}) {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
 
-  return pipeline
-    .png({ palette: true, colors: 2, bitdepth: 1, compressionLevel: 9 })
-    .toBuffer();
+  try {
+    await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT, deviceScaleFactor: 1 });
+    await page.setContent(renderDashboardHtml(data, { assetBaseUrl }), {
+      waitUntil: "domcontentloaded",
+    });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+
+    const logicalPng = await page.screenshot({
+      type: "png",
+      clip: { x: 0, y: 0, width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
+    });
+
+    let pipeline = sharp(logicalPng).grayscale().threshold(128);
+    if (rotate) pipeline = pipeline.rotate(90);
+
+    return pipeline
+      .png({ palette: true, colors: 2, bitdepth: 1, compressionLevel: 9 })
+      .toBuffer();
+  } finally {
+    await page.close();
+  }
 }
 
 module.exports = {
@@ -167,5 +207,5 @@ module.exports = {
   SCREEN_WIDTH,
   generateDashboardPng,
   renderDashboardHtml,
-  renderDashboardSvg,
+  renderTrmnlScreen,
 };

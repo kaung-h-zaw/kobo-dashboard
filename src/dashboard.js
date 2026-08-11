@@ -8,7 +8,7 @@ const PREVIEW_APPLE_DATA = {
   events: [],
 };
 
-const weather = {
+const DEFAULT_WEATHER = {
   location: "Bangkok",
   temperature: "31°C",
   condition: "Partly Cloudy",
@@ -23,11 +23,6 @@ function dateKey(date, timeZone) {
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
-}
-
-function truncate(value, length) {
-  if (!value) return "";
-  return value.length <= length ? value : `${value.slice(0, length - 1)}…`;
 }
 
 function timeLabel(date, timeZone) {
@@ -88,14 +83,15 @@ function formatReminders(reminders, now, timeZone) {
     rows.push({
       kind: "reminder",
       marker: reminder.priority > 0 && reminder.priority <= 4 ? "[!]" : "[ ]",
-      title: truncate(reminder.title, 17),
+      title: reminder.title,
       suffix: reminderSuffix(reminder, timeZone),
+      list: reminder.list,
+      notes: reminder.notes,
+      priority: reminder.priority,
     });
-
-    if (rows.length >= 9) break;
   }
 
-  return rows.length ? rows.slice(0, 9) : [{ kind: "empty", title: "No reminders" }];
+  return rows.length ? rows : [{ kind: "empty", title: "No reminders" }];
 }
 
 function formatTodayEvents(events, now, timeZone) {
@@ -106,10 +102,12 @@ function formatTodayEvents(events, now, timeZone) {
       if (left.allDay !== right.allDay) return left.allDay ? -1 : 1;
       return new Date(left.startDate) - new Date(right.startDate);
     })
-    .slice(0, 8)
     .map((event) => ({
+      kind: "event",
       time: event.allDay ? "All day" : timeLabel(new Date(event.startDate), timeZone),
-      title: truncate(event.title, 18),
+      title: event.title,
+      calendar: event.calendar,
+      location: event.location,
     }));
 }
 
@@ -131,15 +129,19 @@ function formatUpcomingEvents(events, now, timeZone) {
     rows.push({
       kind: "event",
       time: event.allDay ? "All day" : timeLabel(start, timeZone),
-      title: truncate(event.title, 18),
+      title: event.title,
+      calendar: event.calendar,
+      location: event.location,
     });
-    if (rows.length >= 9) break;
   }
 
-  return rows.length ? rows.slice(0, 9) : [{ kind: "empty", title: "No upcoming events" }];
+  return rows.length ? rows : [{ kind: "empty", title: "No upcoming events" }];
 }
 
-function buildDashboardData(appleData, { now = new Date(), timeZone = "Asia/Bangkok" } = {}) {
+function buildDashboardData(
+  appleData,
+  { now = new Date(), timeZone = "Asia/Bangkok", weather = DEFAULT_WEATHER } = {},
+) {
   const events = [...appleData.events].sort(
     (left, right) => new Date(left.startDate) - new Date(right.startDate),
   );

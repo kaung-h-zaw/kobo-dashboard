@@ -1,3 +1,4 @@
+import AppKit
 import EventKit
 import Foundation
 
@@ -69,12 +70,16 @@ struct Configuration {
     let serverURL: URL
     let timeZone: TimeZone
     let dryRun: Bool
+    let permissionsOnly: Bool
+    let statusOnly: Bool
 
     static func load(arguments: [String]) throws -> Configuration {
         let environment = ProcessInfo.processInfo.environment
         let dryRun = arguments.contains("--dry-run")
+        let permissionsOnly = arguments.contains("--permissions-only")
+        let statusOnly = arguments.contains("--status-only")
         let secret = environment["APPLE_SYNC_SECRET"] ?? ""
-        if secret.isEmpty && !dryRun { throw SyncError.missingSecret }
+        if secret.isEmpty && !dryRun && !permissionsOnly && !statusOnly { throw SyncError.missingSecret }
 
         let server = environment["KOBO_SERVER_URL"] ?? "https://kobo-dashboard-7ub6.onrender.com"
         guard let serverURL = URL(string: server),
@@ -87,7 +92,14 @@ struct Configuration {
             throw SyncError.eventKit("Invalid TIMEZONE: \(identifier)")
         }
 
-        return Configuration(secret: secret, serverURL: serverURL, timeZone: timeZone, dryRun: dryRun)
+        return Configuration(
+            secret: secret,
+            serverURL: serverURL,
+            timeZone: timeZone,
+            dryRun: dryRun,
+            permissionsOnly: permissionsOnly,
+            statusOnly: statusOnly
+        )
     }
 }
 
@@ -109,27 +121,77 @@ final class AppleDataReader {
     }
 
     func requestPermissions() async throws {
-        let remindersGranted = try await requestReminderAccess()
-        print("Apple Reminders permission: \(remindersGranted ? "OK" : "DENIED")")
-        guard remindersGranted else { throw SyncError.permissionDenied("Apple Reminders") }
+        let eventsGranted = try await ensureAccess(to: .event, serviceName: "Apple Calendar")
+        let remindersGranted = try await ensureAccess(to: .reminder, serviceName: "Apple Reminders")
 
-        let eventsGranted = try await requestEventAccess()
-        print("Apple Calendar permission: \(eventsGranted ? "OK" : "DENIED")")
         guard eventsGranted else { throw SyncError.permissionDenied("Apple Calendar") }
+        guard remindersGranted else { throw SyncError.permissionDenied("Apple Reminders") }
     }
 
-    private func requestReminderAccess() async throws -> Bool {
-        if #available(macOS 14.0, *) {
-            return try await store.requestFullAccessToReminders()
-        }
-        return try await requestLegacyAccess(to: .reminder)
+    func printAuthorizationStatuses() {
+        let eventStatus = EKEventStore.authorizationStatus(for: .event)
+        let reminderStatus = EKEventStore.authorizationStatus(for: .reminder)
+        print("Apple Calendar authorization status: \(statusName(eventStatus))")
+        print("Apple Reminders authorization status: \(statusName(reminderStatus))")
     }
 
-    private func requestEventAccess() async throws -> Bool {
-        if #available(macOS 14.0, *) {
-            return try await store.requestFullAccessToEvents()
+    private func ensureAccess(to entityType: EKEntityType, serviceName: String) async throws -> Bool {
+        let initialStatus = EKEventStore.authorizationStatus(for: entityType)
+        print("\(serviceName) authorization status: \(statusName(initialStatus))")
+
+        guard initialStatus == .notDetermined else {
+            return hasReadAccess(initialStatus)
         }
-        return try await requestLegacyAccess(to: .event)
+
+        // Bring this accessory app forward before macOS presents its TCC prompt.
+        await MainActor.run {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+
+        let requestGranted: Bool
+        if #available(macOS 14.0, *) {
+            if entityType == .event {
+                requestGranted = try await store.requestFullAccessToEvents()
+            } else {
+                requestGranted = try await store.requestFullAccessToReminders()
+            }
+        } else {
+            requestGranted = try await requestLegacyAccess(to: entityType)
+        }
+        print("\(serviceName) full-access request returned: \(requestGranted)")
+
+        let finalStatus = EKEventStore.authorizationStatus(for: entityType)
+        print("\(serviceName) authorization status: \(statusName(finalStatus))")
+        return hasReadAccess(finalStatus)
+    }
+
+    private func hasReadAccess(_ status: EKAuthorizationStatus) -> Bool {
+        if #available(macOS 14.0, *) {
+            return status == .fullAccess
+        }
+        return status == .authorized
+    }
+
+    private func statusName(_ status: EKAuthorizationStatus) -> String {
+        if #available(macOS 14.0, *) {
+            switch status {
+            case .notDetermined: return "notDetermined"
+            case .restricted: return "restricted"
+            case .denied: return "denied"
+            case .fullAccess: return "fullAccess"
+            case .writeOnly: return "writeOnly"
+            case .authorized: return "authorized"
+            @unknown default: return "unknown(\(status.rawValue))"
+            }
+        }
+
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        default: return "unknown(\(status.rawValue))"
+        }
     }
 
     private func requestLegacyAccess(to entityType: EKEntityType) async throws -> Bool {
@@ -262,45 +324,86 @@ func post(_ payload: SyncPayload, configuration: Configuration) async throws {
     }
 }
 
+func runKoboAppleSync() async -> Int32 {
+    do {
+        let configuration = try Configuration.load(arguments: CommandLine.arguments)
+        let reader = AppleDataReader(timeZone: configuration.timeZone)
+
+        if configuration.statusOnly {
+            reader.printAuthorizationStatuses()
+            return 0
+        }
+
+        try await reader.requestPermissions()
+
+        if configuration.permissionsOnly {
+            print("EventKit permission check complete.")
+            return 0
+        }
+
+        let reminders = try await reader.readReminders()
+        let events = try reader.readEvents()
+        print("Found \(reminders.count) incomplete reminders")
+        print("Found \(events.count) upcoming events")
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let payload = SyncPayload(
+            syncedAt: formatter.string(from: Date()),
+            reminders: reminders,
+            events: events
+        )
+
+        if configuration.dryRun {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            print(String(data: try encoder.encode(payload), encoding: .utf8) ?? "{}")
+            print("Dry run complete; nothing was uploaded.")
+        } else {
+            try await post(payload, configuration: configuration)
+            print("Sync successful")
+        }
+        return 0
+    } catch {
+        fputs("Sync failed: \(error.localizedDescription)\n", stderr)
+        return 1
+    }
+}
+
+// A real AppKit lifecycle keeps the main run loop alive while macOS presents
+// the Calendar and Reminders TCC consent sheets.
 @main
-struct KoboAppleSync {
-    static func main() async {
+@MainActor
+final class KoboAppleSyncApp: NSObject, NSApplicationDelegate {
+    private var exitCode: Int32 = 0
+
+    static func main() {
         if CommandLine.arguments.contains("--help") {
-            print("Usage: KoboAppleSync [--dry-run]")
+            print("Usage: KoboAppleSync [--dry-run | --permissions-only | --status-only]")
             print("--dry-run  Read EventKit and print JSON without posting it.")
+            print("--permissions-only  Request/check EventKit access, then exit.")
+            print("--status-only  Print EventKit authorization without requesting it.")
             return
         }
 
-        do {
-            let configuration = try Configuration.load(arguments: CommandLine.arguments)
-            let reader = AppleDataReader(timeZone: configuration.timeZone)
-            try await reader.requestPermissions()
+        let application = NSApplication.shared
+        let delegate = KoboAppleSyncApp()
+        application.delegate = delegate
+        application.setActivationPolicy(.accessory)
+        application.run()
+        exit(delegate.exitCode)
+    }
 
-            let reminders = try await reader.readReminders()
-            let events = try reader.readEvents()
-            print("Found \(reminders.count) incomplete reminders")
-            print("Found \(events.count) upcoming events")
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
 
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime]
-            let payload = SyncPayload(
-                syncedAt: formatter.string(from: Date()),
-                reminders: reminders,
-                events: events
-            )
-
-            if configuration.dryRun {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                print(String(data: try encoder.encode(payload), encoding: .utf8) ?? "{}")
-                print("Dry run complete; nothing was uploaded.")
-            } else {
-                try await post(payload, configuration: configuration)
-                print("Sync successful")
-            }
-        } catch {
-            fputs("Sync failed: \(error.localizedDescription)\n", stderr)
-            exit(1)
+        Task {
+            exitCode = await runKoboAppleSync()
+            NSApplication.shared.terminate(nil)
         }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 }

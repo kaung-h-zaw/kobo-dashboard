@@ -10,15 +10,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "KoboAppleSync",
-            exclude: ["Info.plist"],
-            linkerSettings: [
-                .unsafeFlags([
-                    "-Xlinker", "-sectcreate",
-                    "-Xlinker", "__TEXT",
-                    "-Xlinker", "__info_plist",
-                    "-Xlinker", "Sources/KoboAppleSync/Info.plist",
-                ]),
-            ]
+            exclude: ["Info.plist"]
         ),
     ]
 )
