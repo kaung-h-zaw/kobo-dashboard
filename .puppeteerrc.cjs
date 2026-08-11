@@ -1,6 +1,7 @@
 const { join } = require("path");
 
-// Keep Chrome inside node_modules, which Render carries from build to runtime.
+// Use a normal build-output directory because Render prunes .cache directories
+// between its build and runtime environments.
 module.exports = {
-  cacheDirectory: join(__dirname, "node_modules", ".cache", "puppeteer"),
+  cacheDirectory: join(__dirname, "render-chrome"),
 };

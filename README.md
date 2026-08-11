@@ -67,7 +67,7 @@ Pushes to the connected GitHub branch trigger the normal Render deployment. The 
 
 The data file is intentionally simple. Render's filesystem is ephemeral, so `data/apple-data.json` can disappear after a restart, redeployment, or free-instance spin-down. The Mac LaunchAgent resends the full snapshot every five minutes, which restores it automatically.
 
-`npm install` also runs an explicit Puppeteer browser installation. `.puppeteerrc.cjs` keeps that Chrome binary under `node_modules/.cache`, which Render carries from build to runtime. If Render restores an incomplete browser directory, the installer repairs that exact Chrome version before retrying. The build fails immediately if the executable cannot be verified. Node.js 20 or newer is required.
+`npm install` also runs an explicit Puppeteer browser installation. `.puppeteerrc.cjs` keeps that Chrome binary under the non-cache `render-chrome/` build-output directory so Render does not prune it before runtime. If Render restores an incomplete browser directory, the installer repairs that exact Chrome version before retrying. The build fails immediately if the executable cannot be verified. Node.js 20 or newer is required.
 
 ## 4. Render environment variables
 
