@@ -81,6 +81,7 @@ If the folder is already a Git repository, skip `git init`. If a remote named `o
    | Variable | Example | Purpose |
    | --- | --- | --- |
    | `DEVICE_API_KEY` | a long secret you choose | Must exactly match the plugin API key |
+   | `ALLOWED_DEVICE_ID` | `58:B0:D4:AF:59:D3` | Allows this Kobo MAC address to fetch a screen |
    | `BASE_URL` | `https://kobo-dashboard-7ub6.onrender.com` | Public service URL, with no path or trailing slash |
    | `TIMEZONE` | `Asia/Bangkok` | Time zone used for the dashboard |
 
@@ -102,11 +103,11 @@ GET <Base URL>/api/display
 access-token: <API key>
 ```
 
-Authentication is the raw device key in the `access-token` HTTP header. It is not a Bearer token. This server requires that header to exactly match `DEVICE_API_KEY`.
+Authentication is accepted when either the raw `access-token` header exactly matches `DEVICE_API_KEY`, or the `ID` header case-insensitively matches `ALLOWED_DEVICE_ID`. The API key is not a Bearer token.
 
 The broader TRMNL BYOS guide lists `/api/setup`, `/api/display`, and `/api/log` as minimum endpoints for official TRMNL firmware. The KOReader plugin's source only calls `/api/display` and then the returned image URL, so this lightweight KOReader backend intentionally does not add unused setup or log endpoints.
 
-The plugin also sends `percent-charged`, `png-width`, `png-height`, `rssi`, `User-Agent`, and the device MAC address under `ID` by default when it can detect one. Those headers are useful device metadata but are not needed by this single-device server.
+The plugin also sends `percent-charged`, `png-width`, `png-height`, `rssi`, `User-Agent`, and the device MAC address under `ID` by default when it can detect one. This server can use that `ID` as the alternative authentication method.
 
 The successful response is:
 
@@ -148,9 +149,9 @@ The successful response is:
 8. Open KOReader's top menu, choose **Tools → TRMNL Display → Fetch screen now**. The plugin should fetch the JSON metadata, download the PNG, and show it full-screen. Tap the image to close it.
 9. For an always-on dashboard, enable **Use server refresh interval**, then choose **Tools → TRMNL Display → Enable auto-refresh**. Also enable KOReader's keep-alive option and disable automatic suspend.
 
-If Fetch screen now reports HTTP 401, make sure the plugin API key and Render `DEVICE_API_KEY` match exactly. If it reports a connection or 404 error, check that Base URL is only the Render origin and that `/health` works in a normal browser.
+If Fetch screen now reports HTTP 401, make sure either the plugin API key exactly matches Render's `DEVICE_API_KEY`, or the detected MAC address matches Render's `ALLOWED_DEVICE_ID`. If it reports a connection or 404 error, check that Base URL is only the Render origin and that `/health` works in a normal browser.
 
-The plugin does not make a request until an API key is configured. For non-200 responses it treats 401/403 as an API-key problem, 404 as a Base URL problem, and 5xx as a server error. A 200 response must contain `image_url`; otherwise it reports the returned `error` or `status` value and uses exponential retry backoff when auto-refresh is active. This server returns 401 for a missing or incorrect `access-token`, and 503 if Render has no `DEVICE_API_KEY` configured.
+The plugin does not make a request until an API key is configured. For non-200 responses it treats 401/403 as an API-key problem, 404 as a Base URL problem, and 5xx as a server error. A 200 response must contain `image_url`; otherwise it reports the returned `error` or `status` value and uses exponential retry backoff when auto-refresh is active. This server returns 401 with `{ "error": "Unauthorized" }` when neither configured authentication method matches.
 
 ## Official protocol sources
 

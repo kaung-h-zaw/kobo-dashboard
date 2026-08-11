@@ -59,28 +59,41 @@ function getDashboardData() {
   };
 }
 
-function hasValidApiKey(request) {
-  const expected = process.env.DEVICE_API_KEY;
-  const provided = request.get("access-token");
+function valuesMatch(left, right) {
+  if (!left || !right) return false;
 
-  if (!expected || !provided) return false;
-
-  const expectedBuffer = Buffer.from(expected);
-  const providedBuffer = Buffer.from(provided);
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
 
   return (
-    expectedBuffer.length === providedBuffer.length &&
-    crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+    leftBuffer.length === rightBuffer.length &&
+    crypto.timingSafeEqual(leftBuffer, rightBuffer)
   );
 }
 
-function requireDeviceApiKey(request, response, next) {
-  if (!process.env.DEVICE_API_KEY) {
-    return response.status(503).json({ error: "DEVICE_API_KEY is not configured" });
-  }
+function requireDeviceAuthentication(request, response, next) {
+  const token = request.get("access-token");
+  const deviceId = request.get("ID");
+  const expectedToken = process.env.DEVICE_API_KEY;
+  const allowedDeviceId = process.env.ALLOWED_DEVICE_ID;
 
-  if (!hasValidApiKey(request)) {
-    return response.status(401).json({ error: "Invalid access-token" });
+  const tokenMatches = valuesMatch(token, expectedToken);
+  const deviceIdMatches = Boolean(
+    deviceId &&
+      allowedDeviceId &&
+      deviceId.toUpperCase() === allowedDeviceId.toUpperCase(),
+  );
+  const authenticated = tokenMatches || deviceIdMatches;
+
+  // Never log the token or configured secrets.
+  console.log({
+    hasAccessToken: Boolean(token),
+    deviceId,
+    authenticated,
+  });
+
+  if (!authenticated) {
+    return response.status(401).json({ error: "Unauthorized" });
   }
 
   next();
@@ -352,7 +365,7 @@ app.get("/api/dashboard", (req, res) => {
 });
 
 // Official TRMNL KOReader clients fetch screen metadata from this endpoint.
-app.get("/api/display", requireDeviceApiKey, (req, res) => {
+app.get("/api/display", requireDeviceAuthentication, (req, res) => {
   const filename = getScreenFilename();
   const imageUrl = new URL("/screens/dashboard.png", getBaseUrl(req));
   imageUrl.searchParams.set("v", filename);
