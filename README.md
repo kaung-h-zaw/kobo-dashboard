@@ -2,7 +2,7 @@
 
 ## 1. What this project does
 
-This project turns a Kobo Nia running KOReader into a landscape Apple Calendar, Reminders, and live-weather dashboard. A small Swift app on the Mac reads iCloud-synced data through Apple's public EventKit framework and uploads JSON to one Node.js Web Service on Render. The server adds cached current weather and creates a signed, monochrome PNG for the official TRMNL Kobo client.
+This project turns a Kobo Nia running the native `usetrmnl/trmnl-kobo` client into a landscape Apple Calendar, Reminders, and live-weather dashboard. A small Swift app on the Mac reads iCloud-synced data through Apple's public EventKit framework and uploads JSON to one Node.js Web Service on Render. The server adds cached current weather and maintains a signed, monochrome PNG for the Kobo client.
 
 The dashboard UI uses the official **TRMNL Framework 3.2.0** rather than project-specific imitation CSS. Its CSS, JavaScript runtime, and TRMNL font files are committed under `public/`, so a deployed screen never depends on a CDN. Headless Chromium renders that real framework page to a PNG; this is the same general rendering approach used by TRMNL's official Node BYOS example.
 
@@ -49,9 +49,9 @@ Headless Chromium + monochrome conversion + 90° rotation
       |
 physical 758 x 1024 PNG
       |
-GET /api/display -> signed image_url
+GET /api/display -> signed URL for an already-valid cached PNG
       |
-Official TRMNL KOReader plugin -> Kobo Nia
+Native usetrmnl/trmnl-kobo client -> FBInk -> Kobo Nia
 ```
 
 ## 3. Render setup
@@ -67,7 +67,7 @@ Pushes to the connected GitHub branch trigger the normal Render deployment. The 
 
 The data file is intentionally simple. Render's filesystem is ephemeral, so `data/apple-data.json` can disappear after a restart, redeployment, or free-instance spin-down. The Mac LaunchAgent resends the full snapshot every five minutes, which restores it automatically.
 
-Render does not retain Puppeteer's downloaded Chrome binary between its build and runtime environments. When the Express service starts, it prepares Chrome inside the running instance's writable `/tmp/kobo-dashboard-chrome` directory. Image requests await that same installation, and later renders reuse it for the life of the instance. No second service or worker is involved. Local development continues to use `render-chrome/`. Node.js 20 or newer is required.
+Render does not retain Puppeteer's downloaded Chrome binary between its build and runtime environments. When Express starts, it prepares Chrome inside `/tmp/kobo-dashboard-chrome` and renders a replacement screen asynchronously. The Kobo image route never waits for Chrome: it immediately serves the committed fallback or the latest successful render. No second service or worker is involved. Local development continues to use `render-chrome/`. Node.js 20 or newer is required.
 
 ## 4. Render environment variables
 
@@ -261,35 +261,29 @@ launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.kaung.kobo-appl
 
 After editing, run the `bootstrap` and `kickstart` commands again. A LaunchAgent runs only while this user is logged in, and a sleeping or powered-off Mac cannot sync.
 
-## 9. KOReader and TRMNL configuration
+## 9. Native trmnl-kobo configuration
 
-1. Download the official [TRMNL KOReader repository](https://github.com/usetrmnl/trmnl-koreader) and extract it.
-2. Connect the Kobo by USB.
-3. Copy the inner `trmnl.koplugin` folder to:
+Install the current release from the official [`usetrmnl/trmnl-kobo`](https://github.com/usetrmnl/trmnl-kobo) repository, including its documented NickelMenu and KoboStuff prerequisites. Copy its `TRMNL` directory to `.adds/TRMNL/` and its NickelMenu entry to `.adds/nm/TRMNL.ini`.
 
-   ```text
-   /.adds/koreader/plugins/trmnl.koplugin/
-   ```
+Configure `.adds/TRMNL/config.json`:
 
-4. Put the existing device API key by itself in:
+```json
+{
+  "TrmnlId": "58:B0:D4:AF:59:D3",
+  "TrmnlToken": "REPLACE_WITH_DEVICE_API_KEY",
+  "TrmnlApiUrl": "https://kobo-dashboard-7ub6.onrender.com/api",
+  "DebugToScreen": 0,
+  "LoopMaxIteration": 0,
+  "ConnectedGracePeriod": 5,
+  "ImageFormat": "png",
+  "IgnoreCurlErrors": "true",
+  "WpaNetworkId": "-1"
+}
+```
 
-   ```text
-   /.adds/koreader/plugins/trmnl.koplugin/apikey.txt
-   ```
+`TrmnlApiUrl` must end in `/api`; the native script appends `/display`. Selecting **TRMNL** in NickelMenu stops Nickel and starts its fetch/display/sleep loop. `LoopMaxIteration: 0` keeps that loop running indefinitely.
 
-   Alternatively, enter it under **Tools → TRMNL Display → Configure TRMNL → API Key**.
-5. Safely eject the Kobo. Fully exit and reopen KOReader so it loads the plugin.
-6. Under **Tools → TRMNL Display → Configure TRMNL**, set Base URL to:
-
-   ```text
-   https://kobo-dashboard-7ub6.onrender.com
-   ```
-
-   Do not append `/api/display`. Leave the MAC header name as `ID`.
-7. Choose **Tools → TRMNL Display → Fetch screen now**.
-8. After the landscape screen works, enable **Use server refresh interval** and **Enable auto-refresh**.
-
-`GET /api/display` still accepts either a matching `access-token` or the configured `ALLOWED_DEVICE_ID`. It returns `image_url`, `filename`, and `refresh_rate: 1800`. The image URL is signed for five minutes because the plugin does not forward authentication headers when downloading it.
+`GET /api/display` accepts either the matching `Access-Token` or allowed `ID`. It returns `image_url`, `filename`, and a refresh interval. While only the fallback screen is ready, the interval is 60 seconds. After the first live render, it becomes 1800 seconds. The image URL is signed because the native client's second curl request does not forward device headers.
 
 ## 10. TRMNL Framework screen and landscape mode
 
@@ -331,9 +325,8 @@ To deploy, commit and push these files to the GitHub branch connected to Render.
 
 ### TRMNL returns HTTP 401
 
-- Confirm the plugin API key matches `DEVICE_API_KEY`, or its detected MAC matches `ALLOWED_DEVICE_ID`.
-- Leave the plugin's MAC header name set to `ID`.
-- Do not add `/api/display` to Base URL.
+- Confirm `TrmnlToken` matches `DEVICE_API_KEY`, or `TrmnlId` matches `ALLOWED_DEVICE_ID`.
+- Set `TrmnlApiUrl` to the server URL ending in `/api`, not `/api/display`.
 
 ### Apple upload returns HTTP 401
 
@@ -357,7 +350,7 @@ To deploy, commit and push these files to the GitHub branch connected to Render.
 
 ### Native Kobo client shows logs over the old Kobo home screen
 
-This means `/api/display` was retrieved, but FBInk could not display the downloaded image. Test the signed image directly and confirm it returns `200` with `Content-Type: image/png`; an HTTP 500 JSON response cannot be decoded by FBInk. In Render logs, look for `Dashboard image generation failed:`. After changing Puppeteer setup, use **Manual Deploy → Clear build cache & deploy** so `npm install` downloads Chrome again. Set `DebugToScreen` to `0` in `.adds/TRMNL/config.json` after troubleshooting.
+Set `DebugToScreen` to `0` after troubleshooting. The signed image route always returns a valid PNG, even while Chrome is installing or if a later render fails. Render logs report `Dashboard screen refresh failed:` without replacing the last good screen.
 
 ### No Apple data after a restart
 

@@ -1,4 +1,5 @@
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
 const {
   createScreenSignature,
@@ -16,7 +17,6 @@ const { buildDashboardData, buildPreviewAppleData } = require("./src/dashboard")
 const { getWeather } = require("./src/weather");
 const {
   generateDashboardPng,
-  prepareDashboardRenderer,
   renderDashboardHtml,
 } = require("./screen");
 
@@ -25,7 +25,22 @@ const PORT = process.env.PORT || 3000;
 const HOST = "0.0.0.0";
 const TIME_ZONE = process.env.TIMEZONE || "Asia/Bangkok";
 const REFRESH_RATE_SECONDS = 1800;
+const PREPARING_REFRESH_RATE_SECONDS = 60;
 const SCREEN_URL_LIFETIME_SECONDS = 300;
+const FALLBACK_SCREEN_PATH = path.join(
+  __dirname,
+  "public",
+  "screens",
+  "dashboard-fallback.png",
+);
+
+// The native trmnl-kobo client expects image_url to return an image immediately.
+// Always keep a valid PNG available while a newer Framework render is prepared.
+let cachedScreen = fs.readFileSync(FALLBACK_SCREEN_PATH);
+let cachedScreenReady = false;
+let cachedScreenUpdatedAt = new Date(0);
+let screenRefreshPromise;
+let screenRefreshQueued = false;
 
 // Render terminates HTTPS before forwarding requests to Express.
 app.set("trust proxy", true);
@@ -38,9 +53,51 @@ function getBaseUrl(request) {
   return `${request.protocol}://${request.get("host")}`;
 }
 
+function getRendererBaseUrl() {
+  const configuredBaseUrl = process.env.BASE_URL?.trim();
+  if (configuredBaseUrl) return configuredBaseUrl.replace(/\/+$/, "");
+  return `http://127.0.0.1:${PORT}`;
+}
+
 function getScreenFilename() {
-  const minute = new Date().toISOString().slice(0, 16).replaceAll(/[-:T]/g, "");
+  const screenDate = cachedScreenReady ? cachedScreenUpdatedAt : new Date();
+  const minute = screenDate.toISOString().slice(0, 16).replaceAll(/[-:T]/g, "");
   return `kobo-dashboard-${minute}.png`;
+}
+
+function queueScreenRefresh(reason) {
+  if (screenRefreshPromise) {
+    screenRefreshQueued = true;
+    return screenRefreshPromise;
+  }
+
+  screenRefreshPromise = (async () => {
+    const appleData = await readAppleData();
+    const weather = await getWeather();
+    const dashboard = buildDashboardData(appleData, { timeZone: TIME_ZONE, weather });
+    const image = await generateDashboardPng(dashboard, {
+      assetBaseUrl: getRendererBaseUrl(),
+      rotate: process.env.KOBO_ROTATE_IMAGE !== "false",
+    });
+
+    // Replace the cache only after a complete PNG has been generated.
+    cachedScreen = image;
+    cachedScreenReady = true;
+    cachedScreenUpdatedAt = new Date();
+    console.log(`Dashboard screen cache refreshed (${reason}).`);
+  })()
+    .catch((error) => {
+      console.error("Dashboard screen refresh failed:", error?.message || "Unknown error");
+    })
+    .finally(() => {
+      screenRefreshPromise = undefined;
+      if (screenRefreshQueued) {
+        screenRefreshQueued = false;
+        queueScreenRefresh("queued update");
+      }
+    });
+
+  return screenRefreshPromise;
 }
 
 async function getPreviewData() {
@@ -101,6 +158,7 @@ app.post("/api/apple-sync", requireAppleSyncAuthentication, async (request, resp
   }
 
   await writeAppleData(data);
+  queueScreenRefresh("Apple sync");
   response.json({
     status: "ok",
     syncedAt: data.syncedAt,
@@ -115,6 +173,9 @@ app.get("/api/apple-data", requireAppleDataAuthentication, async (request, respo
 
 // Official TRMNL KOReader clients fetch screen metadata from this endpoint.
 app.get("/api/display", requireDeviceAuthentication, (request, response) => {
+  // Refresh for the next device cycle without delaying this response or image.
+  queueScreenRefresh("device request");
+
   const filename = getScreenFilename();
   const expiresAt = Math.floor(Date.now() / 1000) + SCREEN_URL_LIFETIME_SECONDS;
   const signature = createScreenSignature(filename, expiresAt);
@@ -131,27 +192,18 @@ app.get("/api/display", requireDeviceAuthentication, (request, response) => {
   response.set("Cache-Control", "no-store").json({
     image_url: imageUrl.toString(),
     filename,
-    refresh_rate: REFRESH_RATE_SECONDS,
+    refresh_rate: cachedScreenReady
+      ? REFRESH_RATE_SECONDS
+      : PREPARING_REFRESH_RATE_SECONDS,
   });
 });
 
-app.get("/screens/dashboard.png", requireScreenSignature, async (request, response) => {
-  let image;
-  try {
-    const appleData = await readAppleData();
-    const weather = await getWeather();
-    const dashboard = buildDashboardData(appleData, { timeZone: TIME_ZONE, weather });
-    image = await generateDashboardPng(dashboard, {
-      assetBaseUrl: getBaseUrl(request),
-      rotate: process.env.KOBO_ROTATE_IMAGE !== "false",
-    });
-  } catch (error) {
-    // Keep secrets out of logs while retaining the useful browser-launch error.
-    console.error("Dashboard image generation failed:", error?.message || "Unknown error");
-    return response.status(500).json({ error: "Dashboard image generation failed" });
-  }
-
-  response.set("Cache-Control", "private, no-store").type("png").send(image);
+app.get("/screens/dashboard.png", requireScreenSignature, (request, response) => {
+  response
+    .set("Cache-Control", "private, no-store")
+    .set("X-Dashboard-Screen", cachedScreenReady ? "live" : "preparing")
+    .type("png")
+    .send(cachedScreen);
 });
 
 app.get("/health", (request, response) => {
@@ -172,9 +224,5 @@ app.use((error, request, response, next) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Kobo dashboard listening on http://${HOST}:${PORT}`);
-  prepareDashboardRenderer()
-    .then(() => console.log("Dashboard renderer is ready."))
-    .catch((error) => {
-      console.error("Dashboard renderer preparation failed:", error?.message || "Unknown error");
-    });
+  queueScreenRefresh("server startup");
 });
