@@ -11,11 +11,16 @@ const REFRESH_RATE_SECONDS = 1800;
 // Render terminates HTTPS before forwarding requests to Express.
 app.set("trust proxy", true);
 
-// Version 1 keeps its sample data in memory. Later, these functions can read
+// This version keeps its sample data in memory. Later, these functions can read
 // from calendar, task, and weather services without changing the routes.
 const events = [
   { time: "18:30", title: "Study JavaScript" },
   { time: "20:00", title: "Call family" },
+];
+
+const upcoming = [
+  { day: "Tomorrow", time: "09:00", title: "University" },
+  { day: "Tomorrow", time: "14:00", title: "Project work" },
 ];
 
 const tasks = [
@@ -39,7 +44,6 @@ function getDashboardData() {
       weekday: "long",
       day: "numeric",
       month: "long",
-      year: "numeric",
       timeZone: TIME_ZONE,
     }).format(now),
     time: new Intl.DateTimeFormat("en-GB", {
@@ -49,6 +53,7 @@ function getDashboardData() {
       timeZone: TIME_ZONE,
     }).format(now),
     events,
+    upcoming,
     tasks,
     weather,
   };
@@ -111,6 +116,15 @@ function renderTask(task) {
     </li>`;
 }
 
+function renderUpcoming(item) {
+  return `
+    <li class="event upcoming">
+      <span class="day">${item.day}</span>
+      <time>${item.time}</time>
+      <span>${item.title}</span>
+    </li>`;
+}
+
 // Both browser routes use the same semantic page. Preview mode adds a frame
 // around the exact 758 × 1024 Kobo canvas so it is easy to inspect on a laptop.
 function renderDashboard({ preview = false } = {}) {
@@ -160,14 +174,6 @@ function renderDashboard({ preview = false } = {}) {
       min-height: 150px;
       padding-bottom: 28px;
       border-bottom: 6px solid #000;
-    }
-
-    .eyebrow {
-      margin: 0 0 10px;
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      text-transform: uppercase;
     }
 
     h1 {
@@ -233,6 +239,18 @@ function renderDashboard({ preview = false } = {}) {
       font-weight: 400;
     }
 
+    .upcoming .day {
+      width: 145px;
+      flex: 0 0 145px;
+      font-size: 23px;
+      font-weight: 400;
+    }
+
+    .upcoming time {
+      width: 95px;
+      flex-basis: 95px;
+    }
+
     .checkbox {
       width: 26px;
       height: 26px;
@@ -279,7 +297,6 @@ function renderDashboard({ preview = false } = {}) {
   <div class="dashboard">
     <header>
       <div>
-        <p class="eyebrow">Today</p>
         <h1>${data.date}</h1>
       </div>
       <p class="clock">${data.time}</p>
@@ -292,8 +309,8 @@ function renderDashboard({ preview = false } = {}) {
       </section>
 
       <section class="full" aria-labelledby="reminders-heading">
-        <h2 id="reminders-heading">Upcoming reminders</h2>
-        <ul>${data.events.map(renderEvent).join("")}</ul>
+        <h2 id="reminders-heading">Upcoming</h2>
+        <ul>${data.upcoming.map(renderUpcoming).join("")}</ul>
       </section>
 
       <section class="full" aria-labelledby="tasks-heading">

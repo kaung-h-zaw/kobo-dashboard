@@ -18,7 +18,7 @@ The date and time are generated when a page, API, or screen-image request is mad
 You need Node.js 18 or newer.
 
 1. Open a terminal in this project folder.
-2. Install the one dependency:
+2. Install the dependencies:
 
    ```bash
    npm install
@@ -81,7 +81,7 @@ If the folder is already a Git repository, skip `git init`. If a remote named `o
    | Variable | Example | Purpose |
    | --- | --- | --- |
    | `DEVICE_API_KEY` | a long secret you choose | Must exactly match the plugin API key |
-   | `BASE_URL` | `https://your-service.onrender.com` | Public service URL, with no path or trailing slash |
+   | `BASE_URL` | `https://kobo-dashboard-7ub6.onrender.com` | Public service URL, with no path or trailing slash |
    | `TIMEZONE` | `Asia/Bangkok` | Time zone used for the dashboard |
 
 5. Click **Create Web Service** and wait for the first deployment to finish.
@@ -112,7 +112,7 @@ The successful response is:
 
 ```json
 {
-  "image_url": "https://your-service.onrender.com/screens/dashboard.png?v=...",
+  "image_url": "https://kobo-dashboard-7ub6.onrender.com/screens/dashboard.png?v=...",
   "filename": "kobo-dashboard-YYYYMMDDHHMM.png",
   "refresh_rate": 1800
 }
@@ -131,23 +131,26 @@ The successful response is:
    ```
 
    The `.adds` directory is hidden. Enable viewing hidden files in your computer's file manager if necessary. Do not copy the whole repository folder; copy the inner `trmnl.koplugin` folder.
-4. Configure the same key used for Render's `DEVICE_API_KEY`. Either:
+4. Safely eject the Kobo, then fully exit and reopen KOReader so it loads the new plugin.
+5. Configure the same key used for Render's `DEVICE_API_KEY`. Either:
 
    - Create `/.adds/koreader/plugins/trmnl.koplugin/apikey.txt` containing only the key, with no quotes; or
-   - Restart KOReader, then open **Tools → TRMNL Display → Configure TRMNL** and enter it under **API Key**.
+   - Open **Tools → TRMNL Display → Configure TRMNL** and enter it under **API Key**.
 
-5. In **Tools → TRMNL Display → Configure TRMNL**, set **Base URL** to your Render origin, for example:
+6. In **Tools → TRMNL Display → Configure TRMNL**, set **Base URL** to:
 
    ```text
-   https://your-service.onrender.com
+   https://kobo-dashboard-7ub6.onrender.com
    ```
 
    Do not add `/api/display`; the plugin adds that path itself. Leave **MAC address header name** as `ID`.
-6. Save the settings and make sure the Kobo is connected to Wi-Fi.
-7. Open **Tools → TRMNL Display → Fetch screen now**. The plugin should fetch the JSON metadata, download the PNG, and show it full-screen. Tap the image to close it.
-8. For an always-on dashboard, enable **Use server refresh interval**, then choose **Tools → TRMNL Display → Enable auto-refresh**. Also enable KOReader's keep-alive option and disable automatic suspend.
+7. Save the settings and make sure the Kobo is connected to Wi-Fi.
+8. Open KOReader's top menu, choose **Tools → TRMNL Display → Fetch screen now**. The plugin should fetch the JSON metadata, download the PNG, and show it full-screen. Tap the image to close it.
+9. For an always-on dashboard, enable **Use server refresh interval**, then choose **Tools → TRMNL Display → Enable auto-refresh**. Also enable KOReader's keep-alive option and disable automatic suspend.
 
 If Fetch screen now reports HTTP 401, make sure the plugin API key and Render `DEVICE_API_KEY` match exactly. If it reports a connection or 404 error, check that Base URL is only the Render origin and that `/health` works in a normal browser.
+
+The plugin does not make a request until an API key is configured. For non-200 responses it treats 401/403 as an API-key problem, 404 as a Base URL problem, and 5xx as a server error. A 200 response must contain `image_url`; otherwise it reports the returned `error` or `status` value and uses exponential retry backoff when auto-refresh is active. This server returns 401 for a missing or incorrect `access-token`, and 503 if Render has no `DEVICE_API_KEY` configured.
 
 ## Official protocol sources
 
@@ -159,4 +162,3 @@ If Fetch screen now reports HTTP 401, make sure the plugin API key and Render `D
 - [Official TRMNL ImageMagick guide](https://docs.trmnl.com/go/imagemagick-guide) — monochrome PNG guidance
 
 The next application step is replacing sample data with calendar, task, and weather integrations. Their secrets should remain in Render environment variables rather than being committed to GitHub.
-# kobo-dashboard
