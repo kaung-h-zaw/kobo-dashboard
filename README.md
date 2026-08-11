@@ -1,165 +1,309 @@
-# Kobo Dashboard
+# Kobo Apple Dashboard
 
-A small Node.js and Express dashboard and self-hosted TRMNL endpoint for a Kobo Nia running KOReader. It uses a fixed 758 × 1024, black-and-white layout designed for an e-ink screen. It does not need a database, Docker, or browser-side JavaScript.
+## 1. What this project does
 
-## What it includes
+This project turns a Kobo Nia running KOReader into a landscape Apple Calendar and Reminders dashboard. A small Swift program on the Mac reads iCloud-synced data through Apple's public EventKit framework and uploads JSON to one Node.js Web Service on Render. The server creates a signed, monochrome PNG for the official TRMNL KOReader plugin.
 
-- `/` — desktop browser preview of the Kobo-sized dashboard
-- `/dashboard` — clean Kobo-friendly dashboard page
-- `/api/dashboard` — date, time, events, tasks, and weather as JSON
-- `/api/display` — authenticated TRMNL KOReader screen metadata
-- `/screens/dashboard.png` — generated 758 × 1024 monochrome PNG
-- `/health` — simple health check returning `{ "status": "ok" }`
+There is no Docker, database, Redis, browser automation, background worker, Apple password, private Apple API, or iCloud scraping.
 
-The date and time are generated when a page, API, or screen-image request is made. Events, tasks, and weather are sample data in `server.js` for now. The PNG is rendered directly with Sharp; no browser automation is used.
+Routes:
 
-## Run it locally
+- `GET /` — public sample-data browser preview
+- `GET /dashboard` — public sample-data landscape dashboard
+- `GET /api/dashboard` — public sample dashboard JSON; never contains Apple data
+- `GET /health` — public health check
+- `POST /api/apple-sync` — authenticated Apple data upload
+- `GET /api/apple-data` — authenticated raw-data debugging endpoint
+- `GET /api/display` — authenticated TRMNL metadata endpoint
+- `GET /screens/dashboard.png?...` — short-lived signed Kobo image URL
 
-You need Node.js 18 or newer.
-
-1. Open a terminal in this project folder.
-2. Install the dependencies:
-
-   ```bash
-   npm install
-   ```
-
-3. Start the server:
-
-   ```bash
-   npm start
-   ```
-
-4. Open <http://localhost:3000> in your browser. The Kobo page is at <http://localhost:3000/dashboard>.
-
-To test the authenticated TRMNL response locally, start the app with environment variables:
-
-```bash
-DEVICE_API_KEY=my-secret-key BASE_URL=http://localhost:3000 npm start
-```
-
-In another terminal, request a screen:
-
-```bash
-curl http://localhost:3000/api/display \
-  --header "access-token: my-secret-key"
-```
-
-Stop the server by pressing `Ctrl+C` in the terminal.
-
-## Push it to GitHub
-
-Create an empty repository on GitHub first. Do not add a README or `.gitignore` there, because this project already has them. Then run these commands in the project folder, replacing the example URL with your repository URL:
-
-```bash
-git init
-git add .
-git commit -m "Create Kobo dashboard"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/kobo-dashboard.git
-git push -u origin main
-```
-
-If the folder is already a Git repository, skip `git init`. If a remote named `origin` already exists, use `git remote set-url origin YOUR-REPOSITORY-URL` instead of `git remote add origin`.
-
-## Deploy one free Web Service on Render
-
-1. Sign in to [Render](https://render.com/) and connect your GitHub account.
-2. In the Render dashboard, choose **New**, then **Web Service**.
-3. Select your `kobo-dashboard` GitHub repository.
-4. Use these settings:
-
-   - **Runtime:** Node
-   - **Build Command:** `npm install`
-   - **Start Command:** `npm start`
-   - **Instance Type:** Free
-
-   Under **Advanced**, you can also set **Health Check Path** to `/health`.
-
-   Add these environment variables:
-
-   | Variable | Example | Purpose |
-   | --- | --- | --- |
-   | `DEVICE_API_KEY` | a long secret you choose | Must exactly match the plugin API key |
-   | `ALLOWED_DEVICE_ID` | `58:B0:D4:AF:59:D3` | Allows this Kobo MAC address to fetch a screen |
-   | `BASE_URL` | `https://kobo-dashboard-7ub6.onrender.com` | Public service URL, with no path or trailing slash |
-   | `TIMEZONE` | `Asia/Bangkok` | Time zone used for the dashboard |
-
-5. Click **Create Web Service** and wait for the first deployment to finish.
-6. Open the Render URL shown for the service. Add `/dashboard`, `/api/dashboard`, or `/health` to visit the other routes.
-
-Only one Render Web Service is needed. Render supplies a `PORT` environment variable automatically; `server.js` reads it and binds to `0.0.0.0`, so no custom port setting is required. Do not add `PORT` yourself.
-
-The dashboard defaults to Bangkok time when `TIMEZONE` is omitted. Another valid IANA time zone, such as `Europe/London`, can be used instead.
-
-Render currently spins down a free Web Service after 15 minutes without inbound traffic, and waking it can take about a minute. That may matter later when choosing how often the Kobo refreshes.
-
-## TRMNL protocol implemented here
-
-The official KOReader plugin requests:
+## 2. Architecture
 
 ```text
-GET <Base URL>/api/display
-access-token: <API key>
+iPhone / iPad
+      |
+    iCloud
+      |
+Apple Calendar + Reminders
+      |
+Mac EventKit helper (every 5 minutes)
+      |  Authorization: Bearer APPLE_SYNC_SECRET
+      v
+POST /api/apple-sync on one Render Web Service
+      |
+data/apple-data.json (temporary Render filesystem)
+      |
+1024 x 758 monochrome PNG
+      |
+GET /api/display -> signed image_url
+      |
+Official TRMNL KOReader plugin -> Kobo Nia
 ```
 
-Authentication is accepted when either the raw `access-token` header exactly matches `DEVICE_API_KEY`, or the `ID` header case-insensitively matches `ALLOWED_DEVICE_ID`. The API key is not a Bearer token.
+## 3. Render setup
 
-The broader TRMNL BYOS guide lists `/api/setup`, `/api/display`, and `/api/log` as minimum endpoints for official TRMNL firmware. The KOReader plugin's source only calls `/api/display` and then the returned image URL, so this lightweight KOReader backend intentionally does not add unused setup or log endpoints.
+The existing service remains a single Node Web Service:
 
-The plugin also sends `percent-charged`, `png-width`, `png-height`, `rssi`, `User-Agent`, and the device MAC address under `ID` by default when it can detect one. This server can use that `ID` as the alternative authentication method.
+- **Build Command:** `npm install`
+- **Start Command:** `npm start`
+- **Health Check Path:** `/health`
+- **Instance Type:** Free
 
-The successful response is:
+Pushes to the connected GitHub branch trigger the normal Render deployment. The server continues to listen on Render's `PORT` at `0.0.0.0`.
 
-```json
-{
-  "image_url": "https://kobo-dashboard-7ub6.onrender.com/screens/dashboard.png?v=...",
-  "filename": "kobo-dashboard-YYYYMMDDHHMM.png",
-  "refresh_rate": 1800
-}
+The data file is intentionally simple. Render's filesystem is ephemeral, so `data/apple-data.json` can disappear after a restart, redeployment, or free-instance spin-down. The Mac LaunchAgent resends the full snapshot every five minutes, which restores it automatically.
+
+## 4. Render environment variables
+
+In the Render service, open **Environment** and configure:
+
+| Variable | Value |
+| --- | --- |
+| `DEVICE_API_KEY` | Existing KOReader device key |
+| `ALLOWED_DEVICE_ID` | Existing Kobo MAC, such as `58:B0:D4:AF:59:D3` |
+| `BASE_URL` | `https://kobo-dashboard-7ub6.onrender.com` |
+| `TIMEZONE` | `Asia/Bangkok` |
+| `APPLE_SYNC_SECRET` | A new random secret used only by the Mac helper |
+| `KOBO_ROTATE_IMAGE` | `false` initially |
+
+Generate the new Apple sync secret on the Mac:
+
+```bash
+openssl rand -hex 32
 ```
 
-`image_url` is absolute. The plugin downloads that PNG in a second request and displays it full-screen. `filename` lets the plugin recognize a changed image, and `refresh_rate` is used when **Use server refresh interval** is enabled.
+Copy the result directly into Render and the LaunchAgent file. Never put its real value in GitHub. The tracked [.env.example](.env.example) contains names only.
 
-## Install and configure the KOReader plugin on Kobo
+## 5. Apple sync helper setup
 
-1. Download the official [TRMNL KOReader repository](https://github.com/usetrmnl/trmnl-koreader) as a ZIP and extract it on your computer.
+The helper requires macOS 13 or newer and the Apple command-line developer tools. Open Terminal and run:
+
+```bash
+cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
+swift build -c release
+```
+
+The executable will be:
+
+```text
+/Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/release/KoboAppleSync
+```
+
+Rebuild the helper whenever `main.swift`, `Package.swift`, or its permission descriptions change. Run the final release binary manually once before installing the LaunchAgent so macOS can show its permission prompts.
+
+The helper reads:
+
+- incomplete reminders, sorted overdue → today → upcoming → undated;
+- reminder title, notes, due date/time, priority, list, and identifier;
+- Calendar events from today through the following seven days;
+- event title, start/end, calendar, all-day status, location, notes, and identifier.
+
+EventKit only returns calendars available for the requested entity type. Apple's public `EKCalendar` API does not expose Calendar.app's hidden/visible checkbox, so the helper cannot inspect that UI-only state without using a forbidden private API.
+
+## 6. EventKit permissions
+
+First run a dry sync. It reads and prints data but uploads nothing:
+
+```bash
+cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
+TIMEZONE=Asia/Bangkok .build/release/KoboAppleSync --dry-run
+```
+
+Approve both prompts:
+
+- Apple Reminders access
+- Apple Calendar access
+
+Expected terminal messages include:
+
+```text
+Apple Reminders permission: OK
+Apple Calendar permission: OK
+Found 8 incomplete reminders
+Found 5 upcoming events
+```
+
+If access was denied, open **System Settings → Privacy & Security → Calendars** and **Reminders**, enable access for the helper or Terminal, then rerun it. The helper never requests an Apple ID or password.
+
+## 7. Manual Apple sync test
+
+### Verify JSON without uploading
+
+```bash
+cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
+TIMEZONE=Asia/Bangkok .build/release/KoboAppleSync --dry-run
+```
+
+The printed JSON should contain `syncedAt`, `reminders`, and `events`.
+
+### Upload to Render
+
+Replace the placeholder with the same secret stored in Render:
+
+```bash
+cd /Users/kaunghtetzaw/kobo-dashboard/mac-sync
+APPLE_SYNC_SECRET='REPLACE_WITH_YOUR_SECRET' \
+KOBO_SERVER_URL='https://kobo-dashboard-7ub6.onrender.com' \
+TIMEZONE='Asia/Bangkok' \
+.build/release/KoboAppleSync
+```
+
+A successful upload ends with:
+
+```text
+Sync successful
+```
+
+Verify the protected server copy with either the Apple secret:
+
+```bash
+curl 'https://kobo-dashboard-7ub6.onrender.com/api/apple-data' \
+  -H 'Authorization: Bearer REPLACE_WITH_YOUR_SECRET'
+```
+
+or the existing device key:
+
+```bash
+curl 'https://kobo-dashboard-7ub6.onrender.com/api/apple-data' \
+  -H 'access-token: REPLACE_WITH_DEVICE_API_KEY'
+```
+
+## 8. Automatic five-minute sync
+
+The example [LaunchAgent](mac-sync/com.kaung.kobo-apple-sync.plist) already contains this project's executable and log paths. Copy it first, then edit only the private copy so a real secret never enters the git working tree:
+
+```bash
+mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+cp /Users/kaunghtetzaw/kobo-dashboard/mac-sync/com.kaung.kobo-apple-sync.plist \
+  "$HOME/Library/LaunchAgents/"
+nano "$HOME/Library/LaunchAgents/com.kaung.kobo-apple-sync.plist"
+```
+
+Replace `REPLACE_WITH_YOUR_SECRET`, save with `Control-O`, press Return, then exit with `Control-X`.
+
+Install and secure it:
+
+```bash
+chmod 600 "$HOME/Library/LaunchAgents/com.kaung.kobo-apple-sync.plist"
+plutil -lint "$HOME/Library/LaunchAgents/com.kaung.kobo-apple-sync.plist"
+```
+
+Load it and trigger an immediate run:
+
+```bash
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.kaung.kobo-apple-sync.plist"
+launchctl kickstart -k "gui/$(id -u)/com.kaung.kobo-apple-sync"
+```
+
+Check status and logs:
+
+```bash
+launchctl print "gui/$(id -u)/com.kaung.kobo-apple-sync"
+tail -f "$HOME/Library/Logs/kobo-apple-sync.log"
+tail -f "$HOME/Library/Logs/kobo-apple-sync-error.log"
+```
+
+Unload it before editing or replacing it:
+
+```bash
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.kaung.kobo-apple-sync.plist"
+```
+
+After editing, run the `bootstrap` and `kickstart` commands again. A LaunchAgent runs only while this user is logged in, and a sleeping or powered-off Mac cannot sync.
+
+## 9. KOReader and TRMNL configuration
+
+1. Download the official [TRMNL KOReader repository](https://github.com/usetrmnl/trmnl-koreader) and extract it.
 2. Connect the Kobo by USB.
-3. Copy the extracted `trmnl.koplugin` folder into the Kobo KOReader plugin directory so the complete path is:
+3. Copy the inner `trmnl.koplugin` folder to:
 
    ```text
    /.adds/koreader/plugins/trmnl.koplugin/
    ```
 
-   The `.adds` directory is hidden. Enable viewing hidden files in your computer's file manager if necessary. Do not copy the whole repository folder; copy the inner `trmnl.koplugin` folder.
-4. Safely eject the Kobo, then fully exit and reopen KOReader so it loads the new plugin.
-5. Configure the same key used for Render's `DEVICE_API_KEY`. Either:
+4. Put the existing device API key by itself in:
 
-   - Create `/.adds/koreader/plugins/trmnl.koplugin/apikey.txt` containing only the key, with no quotes; or
-   - Open **Tools → TRMNL Display → Configure TRMNL** and enter it under **API Key**.
+   ```text
+   /.adds/koreader/plugins/trmnl.koplugin/apikey.txt
+   ```
 
-6. In **Tools → TRMNL Display → Configure TRMNL**, set **Base URL** to:
+   Alternatively, enter it under **Tools → TRMNL Display → Configure TRMNL → API Key**.
+5. Safely eject the Kobo. Fully exit and reopen KOReader so it loads the plugin.
+6. Under **Tools → TRMNL Display → Configure TRMNL**, set Base URL to:
 
    ```text
    https://kobo-dashboard-7ub6.onrender.com
    ```
 
-   Do not add `/api/display`; the plugin adds that path itself. Leave **MAC address header name** as `ID`.
-7. Save the settings and make sure the Kobo is connected to Wi-Fi.
-8. Open KOReader's top menu, choose **Tools → TRMNL Display → Fetch screen now**. The plugin should fetch the JSON metadata, download the PNG, and show it full-screen. Tap the image to close it.
-9. For an always-on dashboard, enable **Use server refresh interval**, then choose **Tools → TRMNL Display → Enable auto-refresh**. Also enable KOReader's keep-alive option and disable automatic suspend.
+   Do not append `/api/display`. Leave the MAC header name as `ID`.
+7. Choose **Tools → TRMNL Display → Fetch screen now**.
+8. After the landscape screen works, enable **Use server refresh interval** and **Enable auto-refresh**.
 
-If Fetch screen now reports HTTP 401, make sure either the plugin API key exactly matches Render's `DEVICE_API_KEY`, or the detected MAC address matches Render's `ALLOWED_DEVICE_ID`. If it reports a connection or 404 error, check that Base URL is only the Render origin and that `/health` works in a normal browser.
+`GET /api/display` still accepts either a matching `access-token` or the configured `ALLOWED_DEVICE_ID`. It returns `image_url`, `filename`, and `refresh_rate: 1800`. The image URL is signed for five minutes because the plugin does not forward authentication headers when downloading it.
 
-The plugin does not make a request until an API key is configured. For non-200 responses it treats 401/403 as an API-key problem, 404 as a Base URL problem, and 5xx as a server error. A 200 response must contain `image_url`; otherwise it reports the returned `error` or `status` value and uses exponential retry backoff when auto-refresh is active. This server returns 401 with `{ "error": "Unauthorized" }` when neither configured authentication method matches.
+## 10. Landscape mode
 
-## Official protocol sources
+The normal generated image is exactly **1024 × 758**. Begin with:
 
-- [TRMNL KOReader README](https://github.com/usetrmnl/trmnl-koreader) — installation, settings, custom server endpoint, MAC header, and response fields
-- [TRMNL KOReader development guide](https://github.com/usetrmnl/trmnl-koreader/blob/main/DEVELOPMENT.md) — request headers and response example
-- [TRMNL KOReader request implementation](https://github.com/usetrmnl/trmnl-koreader/blob/main/trmnl.koplugin/main.lua) — exact HTTP request, authentication header, image download, caching, and refresh behavior
-- [Official TRMNL BYOS API guide](https://docs.trmnl.com/go/diy/byos) — minimum BYOS endpoints and `ID` header
-- [Official TRMNL Display API](https://docs.trmnl.com/go/private-api/screens) — `access-token` authentication and display response
-- [Official TRMNL ImageMagick guide](https://docs.trmnl.com/go/imagemagick-guide) — monochrome PNG guidance
+```text
+KOBO_ROTATE_IMAGE=false
+```
 
-The next application step is replacing sample data with calendar, task, and weather integrations. Their secrets should remain in Render environment variables rather than being committed to GitHub.
+Set KOReader/Kobo to landscape orientation. If the plugin or framebuffer instead needs portrait pixel dimensions and the dashboard appears sideways, change Render to:
+
+```text
+KOBO_ROTATE_IMAGE=true
+```
+
+That rotates the completed landscape dashboard 90 degrees and serves a 758 × 1024 PNG. Change only this variable; the dashboard layout itself remains landscape.
+
+## 11. Troubleshooting
+
+### TRMNL returns HTTP 401
+
+- Confirm the plugin API key matches `DEVICE_API_KEY`, or its detected MAC matches `ALLOWED_DEVICE_ID`.
+- Leave the plugin's MAC header name set to `ID`.
+- Do not add `/api/display` to Base URL.
+
+### Apple upload returns HTTP 401
+
+- Confirm the helper and Render use the same `APPLE_SYNC_SECRET`.
+- The header must be `Authorization: Bearer <secret>`.
+
+### Apple upload returns HTTP 400
+
+- Run `--dry-run` and inspect the JSON.
+- Check `kobo-apple-sync-error.log` for the validation message.
+
+### Permission denied
+
+- Check **System Settings → Privacy & Security → Calendars** and **Reminders**.
+- Run the compiled release executable manually again.
+
+### Render unavailable
+
+- Test <https://kobo-dashboard-7ub6.onrender.com/health>.
+- A free Render service can need time to wake after inactivity. The helper reports non-2xx status codes and tries again at the next five-minute LaunchAgent run.
+
+### No Apple data after a restart
+
+Render's local filesystem is ephemeral. Wait for the next Mac sync or run the helper manually.
+
+### Check server data without exposing it publicly
+
+Use authenticated `/api/apple-data` as shown in the manual test section. An unauthenticated request returns HTTP 401.
+
+## 12. Security
+
+- Apple credentials never leave Apple devices and are never stored by this project.
+- The Mac uses only Apple's public EventKit framework.
+- `APPLE_SYNC_SECRET` protects uploads; `DEVICE_API_KEY` or `APPLE_SYNC_SECRET` protects raw-data debugging.
+- Device metadata supports the existing `access-token` or allowed `ID` authentication.
+- Screen downloads use short-lived HMAC signatures.
+- Public preview routes contain sample data only.
+- JSON bodies are limited to 256 KB and validated before storage.
+- Text is XML-escaped before SVG/PNG rendering.
+- Secrets are compared with timing-safe logic and are never logged.
+- `.env`, Apple data, Swift build products, and local secrets are ignored by git.
+
+Official Apple references used for the helper: [Accessing the event store](https://developer.apple.com/documentation/eventkit/accessing-the-event-store), [Retrieving events and reminders](https://developer.apple.com/documentation/eventkit/retrieving-events-and-reminders), and [`EKCalendar`](https://developer.apple.com/documentation/eventkit/ekcalendar).

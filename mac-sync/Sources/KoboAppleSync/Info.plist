@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.kaung.KoboAppleSync</string>
+    <key>CFBundleName</key>
+    <string>KoboAppleSync</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Reads upcoming calendar events for your private Kobo dashboard.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Reads upcoming calendar events for your private Kobo dashboard.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Reads incomplete reminders for your private Kobo dashboard.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>Reads incomplete reminders for your private Kobo dashboard.</string>
+</dict>
+</plist>
+

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kaung.kobo-apple-sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/kaunghtetzaw/kobo-dashboard/mac-sync/.build/release/KoboAppleSync</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/kaunghtetzaw/kobo-dashboard/mac-sync</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>APPLE_SYNC_SECRET</key>
+        <string>REPLACE_WITH_YOUR_SECRET</string>
+        <key>KOBO_SERVER_URL</key>
+        <string>https://kobo-dashboard-7ub6.onrender.com</string>
+        <key>TIMEZONE</key>
+        <string>Asia/Bangkok</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/kaunghtetzaw/Library/Logs/kobo-apple-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kaunghtetzaw/Library/Logs/kobo-apple-sync-error.log</string>
+</dict>
+</plist>
