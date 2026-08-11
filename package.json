@@ -4,7 +4,7 @@
   "description": "A lightweight e-ink dashboard for Kobo devices running KOReader",
   "main": "server.js",
   "scripts": {
-    "postinstall": "puppeteer browsers install chrome",
+    "postinstall": "puppeteer browsers install chrome && node scripts/verify-browser.js",
     "start": "node server.js"
   },
   "engines": {
