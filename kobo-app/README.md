@@ -1,6 +1,6 @@
 # Kaung Dashboard — standalone Kobo Nia app
 
-Version 1 is a local, offline application launched from NickelMenu. It does not load KOReader or use KOReader runtime modules. It temporarily exits Nickel, draws directly through FBInk, reads the Kobo Nia touchscreen through Linux evdev, and restarts Nickel on exit.
+The standalone application launches from NickelMenu without KOReader runtime modules. It temporarily exits Nickel, draws directly through FBInk, reads the Kobo Nia touchscreen through Linux evdev, fetches protected dashboard data from Render, and restarts Nickel on exit.
 
 ## Architecture
 
@@ -10,6 +10,7 @@ Version 1 is a local, offline application launched from NickelMenu. It does not 
 - `lib/screen.lua` uses `fbdepth` canonical rotation and maps the same raw touch coordinates into the 1024×758 logical layout.
 - `lib/renderer.lua` batches FBInk text and rectangle writes before refresh.
 - `lib/state.lua` persists reminder and Kanban changes only when the user interacts.
+- `lib/api.lua` downloads protected JSON in the background every five minutes and retains the last valid cache when offline.
 - `nickel.sh` restarts the Kobo interface without rebooting.
 
 ## Interface system
@@ -77,6 +78,8 @@ The installer copies `luajit`, `fbink`, `fbdepth`, and `input_scan` into this ap
    KOBOeReader/.adds/kaungdashboard/bin/fbink
    KOBOeReader/.adds/kaungdashboard/bin/fbdepth
    KOBOeReader/.adds/kaungdashboard/bin/input_scan
+   KOBOeReader/.adds/kaungdashboard/connect-wifi.sh
+   KOBOeReader/.adds/kaungdashboard/scripts/enable-wifi.sh
    KOBOeReader/.adds/nm/KaungDashboard
    ```
 
@@ -94,6 +97,7 @@ No installer is run automatically by this repository.
 - Tap any reminder row to toggle completion and its measured strike-through.
 - Tap a Kanban card to advance it. Done remains Done by default.
 - Tap the visible **EXIT** button on any page to return to Nickel.
+- Tap the visible **RELOAD** button on any page to fetch immediately. It inverts to **SYNC** while the background request is running.
 - Backup exit: press and hold the top-left EXIT corner for three seconds.
 
 ## Quote and Guest Wi-Fi
@@ -103,6 +107,42 @@ Home includes a local quote-of-the-day panel. Its seven short messages rotate by
 Guest Wi-Fi is one swipe right from Home. It shows separate, permanently saved QR codes for `Kaung_2.4G` and `Kaung_5G`. The 1-bit PNG files are drawn at their native 296×296 resolution so their module grid remains sharp. The written password is not shown, but it is encoded in each QR image. The two generated PNGs are intentionally ignored by Git and still copied to the Kobo by the installer; treat the local files in `assets/` as private credentials.
 
 The QR content is static. It is drawn only when the Guest Wi-Fi page opens and does not receive its own timed updates.
+
+## Real data and five-minute fetching
+
+The standalone app requests `https://kobo-dashboard-7ub6.onrender.com/api/device-data` every five minutes. This protected endpoint combines the most recent Apple Calendar/Reminders upload with weather data. The app renders its cached response immediately at startup, performs network work in a background `curl` process, atomically replaces the cache only after valid JSON is received, and keeps the previous screen data after a failed request. It redraws the current page only when visible data changed, so an identical five-minute response does not cause an unnecessary e-ink flash.
+
+The Kobo does not connect directly to the Mac:
+
+```text
+Apple Calendar/Reminders → Mac sync helper → Render → Kobo Wi-Fi
+```
+
+The Mac and Kobo do not need to be on the same network. The Mac must be powered on, logged in, online, and running the existing five-minute LaunchAgent for Apple changes to reach Render. If the Mac is asleep, the Kobo continues showing the last server copy. Render weather does not depend on the Mac.
+
+### One-time Kobo authentication
+
+The app reads the existing Render `DEVICE_API_KEY` from this private file:
+
+```text
+/mnt/onboard/.adds/kaungdashboard/device-token
+```
+
+Create it while the Kobo is connected by USB. On macOS, avoid placing the token directly in shell history:
+
+```bash
+read -s "device_token?Render DEVICE_API_KEY: "; echo
+printf '%s\n' "$device_token" > /Volumes/KOBOeReader/.adds/kaungdashboard/device-token
+unset device_token
+```
+
+The token file, downloaded cache, Wi-Fi QR images, and Apple data are ignored by Git. The installer does not delete an existing token during later upgrades.
+
+The Kobo also needs `curl`. The official `usetrmnl/trmnl-kobo` prerequisites install it through NiLuJe's KoboStuff package. If the previous TRMNL client fetched Render screens successfully, it is already installed. KOReader is not required.
+
+The launcher now turns Wi-Fi on automatically and reconnects to a network already saved in Kobo/Nickel. The same connection check runs before every scheduled or manual fetch, so tapping RELOAD can recover after a dropped connection. The app does not store a separate copy of the network password; use Nickel once to save the network normally.
+
+Automatic connection uses the established Kobo scripts copied from the supplied `usetrmnl/trmnl-kobo` checkout during installation. Initial connection can take up to about 15 seconds. If no saved network is available, the app still opens with cached data and records the failure in `debug.log`.
 
 ## E-ink refresh cadence
 
@@ -127,6 +167,9 @@ Edit `/mnt/onboard/.adds/kaungdashboard/config.json` while connected by USB:
   "PartialRefresh": true,
   "ClockRefreshMinutes": 1,
   "FullRefreshMinutes": 15,
+  "FetchMinutes": 5,
+  "ApiUrl": "https://kobo-dashboard-7ub6.onrender.com/api/device-data",
+  "DeviceTokenFile": "device-token",
   "SwipeThreshold": 120,
   "TapSlop": 28,
   "CornerExitHoldSeconds": 3,
@@ -180,3 +223,5 @@ The Mac tests syntax and state/gesture logic, but it cannot test the Nia framebu
 9. The app remains idle without high CPU use; input polling blocks for up to 500 ms.
 10. Both Wi-Fi QR codes scan from the e-ink display and connect to the correctly labelled network.
 11. The clock updates once per minute without redrawing the QR area, and a clean refresh occurs after fifteen updates.
+12. Launch with Wi-Fi disabled and confirm the app reconnects to the saved network automatically.
+13. Tap RELOAD on every page, confirm it changes to SYNC during the request, and confirm touch remains responsive.

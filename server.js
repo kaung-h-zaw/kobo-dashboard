@@ -14,6 +14,7 @@ const {
   writeAppleData,
 } = require("./src/appleData");
 const { buildDashboardData, buildPreviewAppleData } = require("./src/dashboard");
+const { buildDeviceData } = require("./src/deviceData");
 const { getWeather } = require("./src/weather");
 const {
   generateDashboardPng,
@@ -177,6 +178,17 @@ app.post("/api/apple-sync", requireAppleSyncAuthentication, async (request, resp
 
 app.get("/api/apple-data", requireAppleDataAuthentication, async (request, response) => {
   response.set("Cache-Control", "no-store").json(await readAppleData());
+});
+
+// Structured real data for the standalone interactive Kobo application.
+app.get("/api/device-data", requireDeviceAuthentication, async (request, response) => {
+  const now = new Date();
+  const appleData = await readAppleData();
+  const weather = await getWeather();
+  const dashboard = buildDashboardData(appleData, { now, timeZone: TIME_ZONE, weather });
+  response
+    .set("Cache-Control", "private, no-store")
+    .json(buildDeviceData(dashboard, { generatedAt: now }));
 });
 
 // Official TRMNL KOReader clients fetch screen metadata from this endpoint.

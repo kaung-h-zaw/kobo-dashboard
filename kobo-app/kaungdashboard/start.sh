@@ -21,9 +21,10 @@ log() {
 restart_nickel() {
     if [ "${VIA_NICKEL}" = "true" ]; then
         log "Restarting Nickel"
+        # Clear the dashboard while its own framebuffer orientation is still active.
+        # Nickel will issue the first refresh after it has restored portrait mode.
+        "${FBINK}" -q -f -B WHITE --cls >>"${LOG_FILE}" 2>&1 || true
         "${APP_DIR}/nickel.sh" >>"${LOG_FILE}" 2>&1 &
-        sleep 3
-        "${FBINK}" -q -f --refresh >>"${LOG_FILE}" 2>&1 || true
     fi
 }
 
@@ -69,8 +70,12 @@ for required in "${FBINK}" "${FBDEPTH}" "${LUAJIT}" "${APP_DIR}/bin/input_scan";
         exit 1
     fi
 done
+if ! command -v curl >/dev/null 2>&1; then
+    log "curl is unavailable; remote data will use the last local cache or samples"
+fi
 
 rm -f "${STOP_FILE}"
+cd "${APP_DIR}" || exit 1
 ORIG_FB_BPP="$(cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null)"
 ORIG_FB_ROTA="$(cat /sys/class/graphics/fb0/rotate 2>/dev/null)"
 log "Original framebuffer: ${ORIG_FB_BPP}bpp rotation=${ORIG_FB_ROTA}"
@@ -93,6 +98,9 @@ if pkill -0 nickel 2>/dev/null; then
     done
     rm -f /tmp/nickel-hardware-status
 fi
+
+log "Ensuring Wi-Fi is connected"
+"${APP_DIR}/connect-wifi.sh" >>"${LOG_FILE}" 2>&1 || log "Wi-Fi connection failed; cached data will remain available"
 
 log "Starting dashboard"
 "${LUAJIT}" "${APP_DIR}/app.lua" >>"${LOG_FILE}" 2>&1 &

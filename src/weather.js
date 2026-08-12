@@ -2,9 +2,20 @@ const FALLBACK_WEATHER = Object.freeze({
   location: "Bangkok",
   temperature: "31°C",
   condition: "Partly Cloudy",
+  apparentTemperature: "34°C",
+  high: "34°C",
+  low: "27°C",
+  humidity: "68%",
+  windSpeed: "9 km/h",
+  forecast: [
+    { day: "THU", condition: "Cloudy", high: "33°C", low: "27°C" },
+    { day: "FRI", condition: "Rain", high: "32°C", low: "26°C" },
+    { day: "SAT", condition: "Sunny", high: "34°C", low: "27°C" },
+    { day: "SUN", condition: "Cloudy", high: "33°C", low: "26°C" },
+  ],
 });
 
-const CACHE_MILLISECONDS = 15 * 60 * 1000;
+const CACHE_MILLISECONDS = 5 * 60 * 1000;
 let cachedWeather;
 let cachedAt = 0;
 let pendingRequest;
@@ -37,7 +48,12 @@ async function fetchWeather() {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(latitude));
   url.searchParams.set("longitude", String(longitude));
-  url.searchParams.set("current", "temperature_2m,weather_code");
+  url.searchParams.set(
+    "current",
+    "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m",
+  );
+  url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min");
+  url.searchParams.set("forecast_days", "5");
   url.searchParams.set("timezone", timeZone);
 
   const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
@@ -45,15 +61,54 @@ async function fetchWeather() {
 
   const payload = await response.json();
   const temperature = payload?.current?.temperature_2m;
+  const apparentTemperature = payload?.current?.apparent_temperature;
+  const humidity = payload?.current?.relative_humidity_2m;
+  const windSpeed = payload?.current?.wind_speed_10m;
   const code = payload?.current?.weather_code;
-  if (!Number.isFinite(temperature) || !Number.isInteger(code)) {
+  const daily = payload?.daily;
+  if (
+    !Number.isFinite(temperature) ||
+    !Number.isFinite(apparentTemperature) ||
+    !Number.isFinite(humidity) ||
+    !Number.isFinite(windSpeed) ||
+    !Number.isInteger(code) ||
+    !Array.isArray(daily?.time) ||
+    !Array.isArray(daily?.weather_code) ||
+    !Array.isArray(daily?.temperature_2m_max) ||
+    !Array.isArray(daily?.temperature_2m_min) ||
+    daily.time.length < 5 ||
+    daily.weather_code.length < 5 ||
+    daily.temperature_2m_max.length < 5 ||
+    daily.temperature_2m_min.length < 5 ||
+    !daily.weather_code.slice(0, 5).every(Number.isInteger) ||
+    !daily.temperature_2m_max.slice(0, 5).every(Number.isFinite) ||
+    !daily.temperature_2m_min.slice(0, 5).every(Number.isFinite)
+  ) {
     throw new Error("Weather API returned incomplete current conditions");
   }
 
+  const formatTemperature = (value) => `${Math.round(value)}°C`;
+  const dayFormatter = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    timeZone: "UTC",
+  });
+  const forecast = daily.time.slice(1, 5).map((date, index) => ({
+    day: dayFormatter.format(new Date(`${date}T12:00:00Z`)).toUpperCase(),
+    condition: weatherCondition(daily.weather_code[index + 1]),
+    high: formatTemperature(daily.temperature_2m_max[index + 1]),
+    low: formatTemperature(daily.temperature_2m_min[index + 1]),
+  }));
+
   return {
     location,
-    temperature: `${Math.round(temperature)}°C`,
+    temperature: formatTemperature(temperature),
     condition: weatherCondition(code),
+    apparentTemperature: formatTemperature(apparentTemperature),
+    high: formatTemperature(daily.temperature_2m_max[0]),
+    low: formatTemperature(daily.temperature_2m_min[0]),
+    humidity: `${Math.round(humidity)}%`,
+    windSpeed: `${Math.round(windSpeed)} km/h`,
+    forecast,
   };
 }
 

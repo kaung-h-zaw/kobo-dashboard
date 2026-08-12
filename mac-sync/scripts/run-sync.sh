@@ -4,6 +4,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_CONFIG="$PROJECT_DIR/../.env.example"
 APP_PATH="$PROJECT_DIR/.build/KoboAppleSync.app"
 USER_LOG_DIR="$HOME/Library/Logs"
 OUTPUT_LOG="$USER_LOG_DIR/kobo-apple-sync-manual.log"
@@ -25,6 +26,12 @@ OPEN_ARGUMENTS=(
     --env "KOBO_SERVER_URL=${KOBO_SERVER_URL:-https://kobo-dashboard-7ub6.onrender.com}"
     --env "TIMEZONE=${TIMEZONE:-Asia/Bangkok}"
 )
+
+# The scheduled job has a deliberately secret-free plist. Load the locally
+# configured value at runtime instead of embedding it in LaunchAgent arguments.
+if [[ -z "${APPLE_SYNC_SECRET:-}" && -f "$ROOT_CONFIG" ]]; then
+    APPLE_SYNC_SECRET="$(/usr/bin/sed -n 's/^APPLE_SYNC_SECRET=//p' "$ROOT_CONFIG" | /usr/bin/head -n 1)"
+fi
 
 if [[ -n "${APPLE_SYNC_SECRET:-}" ]]; then
     OPEN_ARGUMENTS+=(--env "APPLE_SYNC_SECRET=$APPLE_SYNC_SECRET")

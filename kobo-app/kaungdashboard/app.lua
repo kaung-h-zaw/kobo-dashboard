@@ -3,6 +3,7 @@ local app_dir = source:match("^(.*)/[^/]+$") or "."
 package.path = app_dir .. "/?.lua;" .. app_dir .. "/lib/?.lua;" .. app_dir .. "/pages/?.lua;" .. package.path
 
 local Config = require("config")
+local Api = require("api")
 local Gestures = require("gestures")
 local Input = require("input")
 local Logger = require("logger")
@@ -13,8 +14,11 @@ local State = require("state")
 
 local config = Config.load(app_dir .. "/config.json")
 local logger = Logger.new(app_dir .. "/debug.log", config.Debug)
+local api = Api.new(app_dir, config, logger)
 local screen = Screen.new(app_dir, config, logger)
 local state = State.new(app_dir .. "/state-data.lua", config, logger)
+local cached_remote = api:loadCache()
+if cached_remote then state:applyRemote(cached_remote) end
 local renderer = Renderer.new(screen)
 local gestures = Gestures.new(config)
 
@@ -32,6 +36,8 @@ local navigation = Navigation.new(page_order, state.currentPage, config.WrapPage
 local targets = {}
 local running = true
 local clock_partial_count = 0
+local fetch_seconds = math.max(1, tonumber(config.FetchMinutes) or 5) * 60
+local last_fetch_started = 0
 
 local function render_page()
     state.currentPage = navigation:current()
@@ -51,6 +57,15 @@ local function change_page(delta)
     render_page()
 end
 
+local function request_fetch()
+    if api:startFetch() then
+        last_fetch_started = os.time()
+        renderer:updateReload(true)
+        return true
+    end
+    return false
+end
+
 local function handle_tap(x, y)
     for index = #targets, 1, -1 do
         local target = targets[index]
@@ -58,6 +73,9 @@ local function handle_tap(x, y)
             if target.kind == "exit" then
                 logger:info("Exit requested: button")
                 running = false
+            elseif target.kind == "reload" then
+                logger:info("Manual reload requested")
+                request_fetch()
             elseif target.kind == "reminder" then
                 local item = state:toggleReminder(target.id)
                 if item then pages.reminders.redrawReminder(renderer, item) end
@@ -74,6 +92,7 @@ logger:info("Detected Kobo Nia profile")
 logger:info("Framebuffer target: 758x1024")
 screen:setOrientation()
 render_page()
+request_fetch()
 
 local ok, input_or_error = pcall(Input.new, app_dir, screen, logger)
 if not ok then
@@ -87,6 +106,7 @@ local full_refresh_minutes = math.max(refresh_minutes, tonumber(config.FullRefre
 local full_refresh_after = math.max(1, math.floor(full_refresh_minutes / refresh_minutes))
 local last_clock_bucket = math.floor(os.time() / (refresh_minutes * 60))
 local last_day = os.date("%Y%m%d")
+if last_fetch_started == 0 then last_fetch_started = os.time() end
 
 while running do
     local stop = io.open(stop_file, "r")
@@ -105,6 +125,13 @@ while running do
             end
         end
     end
+    local remote_data, fetch_finished, remote_changed = api:poll()
+    local remote_rendered = remote_data and remote_changed and state:applyRemote(remote_data)
+    if remote_rendered then render_page()
+    elseif fetch_finished then renderer:updateReload(false) end
+    if api.enabled and not api.fetching and os.time() - last_fetch_started >= fetch_seconds then
+        request_fetch()
+    end
     local clock_bucket = math.floor(os.time() / (refresh_minutes * 60))
     if clock_bucket ~= last_clock_bucket then
         last_clock_bucket = clock_bucket
@@ -121,6 +148,7 @@ while running do
     end
 end
 
+api:stop()
 input:close()
 logger:info("App stopped")
 os.exit(0)

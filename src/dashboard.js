@@ -82,12 +82,14 @@ function formatReminders(reminders, now, timeZone) {
 
     rows.push({
       kind: "reminder",
+      id: reminder.id,
       marker: reminder.priority > 0 && reminder.priority <= 4 ? "[!]" : "[ ]",
       title: reminder.title,
       suffix: reminderSuffix(reminder, timeZone),
       list: reminder.list,
       notes: reminder.notes,
       priority: reminder.priority,
+      completed: reminder.completed,
     });
   }
 

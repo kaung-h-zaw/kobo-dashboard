@@ -20,6 +20,7 @@ Routes:
 - `POST /api/apple-sync` — authenticated Apple data upload
 - `GET /api/apple-data` — authenticated raw-data debugging endpoint
 - `GET /api/display` — authenticated TRMNL metadata endpoint
+- `GET /api/device-data` — authenticated structured data for the standalone interactive app
 - `GET /screens/dashboard.png?...` — short-lived signed Kobo image URL
 
 Official implementation references:

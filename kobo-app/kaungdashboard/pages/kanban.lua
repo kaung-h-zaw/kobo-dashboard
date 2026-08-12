@@ -17,8 +17,10 @@ local function wrap_title(title)
     if #title <= 16 then return title, nil end
     local split = 16
     while split > 1 and title:sub(split, split) ~= " " do split = split - 1 end
-    if split == 1 then return title:sub(1, 16), title:sub(17) end
-    return title:sub(1, split - 1), title:sub(split + 1)
+    if split == 1 then return title:sub(1, 16), title:sub(17, 29) .. (#title > 29 and "..." or "") end
+    local second = title:sub(split + 1)
+    if #second > 16 then second = second:sub(1, 13) .. "..." end
+    return title:sub(1, split - 1), second
 end
 
 function Kanban.draw(renderer, state, index, count)
@@ -39,14 +41,14 @@ function Kanban.draw(renderer, state, index, count)
                 found = true
                 local rect = { x = x + 12, y = y, w = width - 24, h = 88 }
                 renderer:box(rect.x, rect.y, rect.w, rect.h, 1)
-                renderer:label(status == "in_progress" and "Doing" or title, rect.x + 14, rect.y + 12, { scale = 1 })
+                renderer:label(status == "in_progress" and "Doing" or title, rect.x + 14, rect.y + 10, { scale = 1 })
                 local first_line, second_line = wrap_title(item.title)
-                renderer:text(first_line, rect.x + 14, rect.y + 38, 2, {
+                renderer:text(first_line, rect.x + 14, rect.y + 32, 2, {
                     bold = true,
                     color = status == "done" and "GRAY6" or "BLACK",
                 })
                 if second_line then
-                    renderer:text(second_line, rect.x + 14, rect.y + 60, 2, {
+                    renderer:text(second_line, rect.x + 14, rect.y + 62, 1, {
                         bold = true,
                         color = status == "done" and "GRAY6" or "BLACK",
                     })

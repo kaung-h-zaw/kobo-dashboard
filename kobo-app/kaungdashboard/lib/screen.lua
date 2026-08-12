@@ -57,6 +57,12 @@ function Screen:refreshFull()
     return self:command(shell_quote(self.fbink) .. " -q -f --refresh")
 end
 
+function Screen:refreshPage()
+    -- GC16 updates the composed page without the disruptive white/black flash.
+    -- A full flashing cleanup still runs periodically through updateClock.
+    return self:command(shell_quote(self.fbink) .. " -q -W GC16 --refresh")
+end
+
 function Screen:refreshRegion(rect)
     if not self.config.PartialRefresh then return self:refreshFull() end
     local x = math.max(0, math.floor(rect.x))

@@ -6,14 +6,14 @@ local function days_in_month(year, month)
     return tonumber(os.date("%d", os.time({ year = year, month = month + 1, day = 0, hour = 12 })))
 end
 
-function Calendar.draw(renderer, _, index, count)
+function Calendar.draw(renderer, state, index, count)
     renderer:beginPage(Calendar.title, index, count)
     local now = os.date("*t")
 
     renderer:panel(24, 86, 650, 610, months[now.month] .. " " .. now.year)
     local grid_x, grid_y, cell_w, cell_h = 40, 188, 88, 76
     for column, weekday in ipairs(weekdays) do
-        renderer:label(weekday, grid_x + (column - 1) * cell_w + 18, 154)
+        renderer:label(weekday, grid_x + (column - 1) * cell_w + 28, 156, { scale = 1 })
     end
     for column = 0, 7 do
         renderer:line(grid_x + column * cell_w, grid_y, 1, cell_h * 6, "GRAY8")
@@ -37,22 +37,20 @@ function Calendar.draw(renderer, _, index, count)
     end
 
     renderer:panel(694, 86, 306, 610, "Today")
-    renderer:text(os.date("%d %b"):upper(), 718, 150, 4, { bold = true })
-    renderer:text(os.date("%A"):upper(), 718, 202, 2, { color = "GRAY5" })
+    renderer:text(os.date("%d %b"):upper(), 718, 150, 3, { bold = true })
+    renderer:text(os.date("%A"):upper(), 718, 206, 2, { color = "GRAY5" })
     renderer:line(718, 238, 258, 1, "GRAY8")
 
-    local events = {
-        { "09:00", "University" },
-        { "14:00", "Project Meeting" },
-        { "18:30", "Study JavaScript" },
-    }
+    local events = state.events
     local y = 266
-    for _, event in ipairs(events) do
-        renderer:text(event[1], 718, y, 3, { bold = true })
-        renderer:text(event[2], 718, y + 38, 2)
+    for event_index, event in ipairs(events) do
+        if event_index > 3 then break end
+        renderer:text(event.time, 718, y, 2, { bold = true })
+        renderer:text(renderer:clip(event.title, 30), 718, y + 38, 1)
         renderer:line(718, y + 74, 258, 1, "GRAY8")
         y = y + 98
     end
+    if #events == 0 then renderer:text("NO EVENTS TODAY", 718, 278, 2, { color = "GRAY6" }) end
 
     renderer:endPage(Calendar.name)
     return renderer.targets
