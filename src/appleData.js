@@ -46,8 +46,8 @@ function validateReminder(reminder, index) {
     throw new Error(`reminders[${index}].priority must be an integer from 0 to 9`);
   }
 
-  if (reminder.completed !== false) {
-    throw new Error(`reminders[${index}].completed must be false`);
+  if (typeof reminder.completed !== "boolean") {
+    throw new Error(`reminders[${index}].completed must be a boolean`);
   }
 
   return {
@@ -57,7 +57,7 @@ function validateReminder(reminder, index) {
     dueDate: isoDate(reminder.dueDate, `reminders[${index}].dueDate`, { optional: true }),
     dueTime: optionalString(reminder.dueTime, `reminders[${index}].dueTime`, 20),
     priority,
-    completed: false,
+    completed: reminder.completed,
     list: requiredString(reminder.list, `reminders[${index}].list`),
   };
 }

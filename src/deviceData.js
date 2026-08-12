@@ -39,7 +39,7 @@ function deviceReminders(rows) {
   const reminders = [];
   for (const row of rows) {
     if (row.kind === "label") {
-      group = row.label === "UPCOMING" ? "UPCOMING" : "TODAY";
+      group = row.label === "COMPLETED" ? "COMPLETED" : (row.label === "UPCOMING" ? "UPCOMING" : "TODAY");
     } else if (row.kind === "reminder") {
       reminders.push({
         id: einkText(row.id),

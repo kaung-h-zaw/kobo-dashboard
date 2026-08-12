@@ -111,7 +111,7 @@ function State:applyRemote(data)
         if type(item) == "table" and type(item.id) == "string" and type(item.title) == "string" then
             reminders[#reminders + 1] = {
                 id = item.id,
-                group = item.group == "UPCOMING" and "UPCOMING" or "TODAY",
+                group = item.group == "COMPLETED" and "COMPLETED" or (item.group == "UPCOMING" and "UPCOMING" or "TODAY"),
                 title = item.title,
                 due = type(item.due) == "string" and item.due or nil,
                 completed = self.savedReminderStates[item.id] == true or item.completed == true,

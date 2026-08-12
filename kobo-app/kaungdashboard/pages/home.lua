@@ -23,9 +23,9 @@ function Home.draw(renderer, state, index, count)
 
     renderer:panel(518, 86, 482, 218, "Weather / " .. renderer:clip(weather.location, 18))
     renderer:weatherIcon(weather.condition, 538, 154, 104)
-    renderer:text(weather.temperature, 670, 158, 4, { bold = true })
+    renderer:text(weather.high, 670, 158, 4, { bold = true })
     renderer:text(renderer:clip(weather.condition:upper(), 16), 670, 220, 2, { bold = true })
-    renderer:text("HIGH " .. weather.high .. "   LOW " .. weather.low, 670, 272, 1, { color = "GRAY5" })
+    renderer:text("TODAY HIGH   NOW " .. weather.temperature, 670, 272, 1, { color = "GRAY5" })
 
     renderer:panel(24, 320, 478, 248, "Agenda")
     renderer:label("Next event", 42, 378, { scale = 1 })

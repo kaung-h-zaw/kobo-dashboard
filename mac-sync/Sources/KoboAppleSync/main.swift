@@ -223,26 +223,41 @@ final class AppleDataReader {
         let calendars = store.calendars(for: .reminder).filter {
             $0.allowedEntityTypes.contains(.reminder) && !$0.title.isEmpty
         }
-        let predicate = store.predicateForIncompleteReminders(
+        let incompletePredicate = store.predicateForIncompleteReminders(
             withDueDateStarting: nil,
             ending: nil,
             calendars: calendars
         )
 
-        let reminders: [EKReminder] = await withCheckedContinuation { continuation in
-            store.fetchReminders(matching: predicate) { fetched in
+        let incomplete: [EKReminder] = await withCheckedContinuation { continuation in
+            store.fetchReminders(matching: incompletePredicate) { fetched in
                 continuation.resume(returning: fetched ?? [])
             }
         }
 
         let now = Date()
         let startOfToday = calendar.startOfDay(for: now)
+        let completedSince = calendar.date(byAdding: .day, value: -30, to: startOfToday)!
+        let completedPredicate = store.predicateForCompletedReminders(
+            withCompletionDateStarting: completedSince,
+            ending: nil,
+            calendars: calendars
+        )
+        let completed: [EKReminder] = await withCheckedContinuation { continuation in
+            store.fetchReminders(matching: completedPredicate) { fetched in
+                continuation.resume(returning: fetched ?? [])
+            }
+        }
+        let reminders = incomplete + completed
         let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday)!
         let sevenDaysFromNow = calendar.date(byAdding: .day, value: 8, to: startOfToday)!
 
         return reminders
-            .filter { !$0.isCompleted }
             .sorted { left, right in
+                if left.isCompleted != right.isCompleted { return !left.isCompleted }
+                if left.isCompleted {
+                    return (left.completionDate ?? .distantPast) > (right.completionDate ?? .distantPast)
+                }
                 let leftDue = dueDate(for: left)
                 let rightDue = dueDate(for: right)
                 let leftRank = reminderRank(leftDue, today: startOfToday, tomorrow: startOfTomorrow, sevenDays: sevenDaysFromNow)
@@ -260,7 +275,7 @@ final class AppleDataReader {
                     dueDate: due.map(isoFormatter.string),
                     dueTime: hasTime ? due.map(dueTimeFormatter.string) : nil,
                     priority: reminder.priority,
-                    completed: false,
+                    completed: reminder.isCompleted,
                     list: reminder.calendar.title
                 )
             }
@@ -425,7 +440,8 @@ func runKoboAppleSync() async -> Int32 {
 
         let reminders = try await reader.readReminders()
         let events = try reader.readEvents()
-        print("Found \(reminders.count) incomplete reminders")
+        let completedCount = reminders.filter(\.completed).count
+        print("Found \(reminders.count - completedCount) open and \(completedCount) recently completed reminders")
         print("Found \(events.count) upcoming events")
 
         let formatter = ISO8601DateFormatter()

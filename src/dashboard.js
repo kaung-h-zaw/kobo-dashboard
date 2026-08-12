@@ -49,6 +49,7 @@ function upcomingDayLabel(date, now, timeZone) {
 }
 
 function reminderCategory(reminder, now, timeZone) {
+  if (reminder.completed) return "COMPLETED";
   if (!reminder.dueDate) return "NO DATE";
   const due = new Date(reminder.dueDate);
   const today = dateKey(now, timeZone);

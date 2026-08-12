@@ -79,7 +79,8 @@ local function handle_tap(x, y)
             elseif target.kind == "reminder" then
                 local item = state:toggleReminder(target.id)
                 if item then
-                    pages.reminders.redrawReminder(renderer, item)
+                    -- Completion moves the row between columns, so redraw this page.
+                    render_page()
                     api:setReminderCompleted(item.id, item.completed)
                 end
             elseif target.kind == "kanban" and state:advanceKanban(target.id) then

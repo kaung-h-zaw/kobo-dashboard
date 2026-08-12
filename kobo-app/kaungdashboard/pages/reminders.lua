@@ -1,30 +1,22 @@
 local Reminders = { name = "reminders", title = "Reminders", rows = {}, batch = 1 }
 local PAGE_SIZE = 5
 
-local function group_count(state, group)
-    local count = 0
-    for _, item in ipairs(state.reminders) do
-        if item.group == group then count = count + 1 end
-    end
-    return count
-end
-
-local function group_items(state, group)
+local function column_items(state, completed)
     local result = {}
     for _, item in ipairs(state.reminders) do
-        if item.group == group then result[#result + 1] = item end
+        if item.completed == completed then result[#result + 1] = item end
     end
     return result
 end
 
 local function page_count(state)
-    local largest = math.max(#group_items(state, "TODAY"), #group_items(state, "UPCOMING"))
+    local largest = math.max(#column_items(state, false), #column_items(state, true))
     return math.max(1, math.ceil(largest / PAGE_SIZE))
 end
 
-local function draw_group(renderer, state, group, x, width)
-    renderer:panel(x, 86, width, 610, group)
-    local items = group_items(state, group)
+local function draw_column(renderer, state, completed, title, x, width)
+    renderer:panel(x, 86, width, 610, title)
+    local items = column_items(state, completed)
     local first = (Reminders.batch - 1) * PAGE_SIZE + 1
     local last = math.min(#items, first + PAGE_SIZE - 1)
     local range = #items == 0 and "0" or (first .. "-" .. last .. " / " .. #items)
@@ -46,8 +38,8 @@ function Reminders.draw(renderer, state, index, count)
     Reminders.batch = math.min(Reminders.batch, page_count(state))
     renderer:beginPage(Reminders.title, index, count)
     Reminders.rows = {}
-    draw_group(renderer, state, "TODAY", 24, 478)
-    draw_group(renderer, state, "UPCOMING", 518, 482)
+    draw_column(renderer, state, false, "Open", 24, 478)
+    draw_column(renderer, state, true, "Completed", 518, 482)
     renderer:endPage(Reminders.name)
     return renderer.targets
 end
