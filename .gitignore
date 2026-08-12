@@ -3,7 +3,7 @@ node_modules/
 render-chrome/
 .env
 .env.*
-!.env.example
+.env.example
 .DS_Store
 npm-debug.log*
 data/apple-data.json

@@ -45,7 +45,15 @@ let screenRefreshQueued = false;
 // Render terminates HTTPS before forwarding requests to Express.
 app.set("trust proxy", true);
 app.use(express.json({ limit: "256kb" }));
-app.use(express.static(path.join(__dirname, "public"), { index: false, maxAge: "1d" }));
+app.use(express.static(path.join(__dirname, "public"), {
+  index: false,
+  maxAge: "1d",
+  // Puppeteer renders HTML with a null origin, so local Framework fonts need
+  // an explicit CORS header to load in generated PNGs as well as previews.
+  setHeaders(response) {
+    response.setHeader("Access-Control-Allow-Origin", "*");
+  },
+}));
 
 function getBaseUrl(request) {
   const configuredBaseUrl = process.env.BASE_URL?.trim();

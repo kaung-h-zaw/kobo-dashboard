@@ -79,34 +79,51 @@ function renderTrmnlScreen(data) {
     <div class="screen screen--byod_custom screen--1bit screen--fonts-trmnl screen--no-bleed" data-device="kobo-nia">
       <div class="view view--full">
         <div class="layout">
-          <div class="grid grid--cols-3 gap--medium h--full">
-            <section class="flex flex--col flex--stretch-x gap--small">
+          <div class="grid grid--cols-12 gap--medium h--full">
+            <section class="col--span-7 flex flex--col flex--stretch-x gap--small">
               <div class="flex flex--row flex--between flex--center-y">
-                <span class="title">Apple Calendar</span>
-                <span class="value value--large">${escapeHtml(data.time)}</span>
+                <div class="flex flex--col">
+                  <span class="title title--large">Agenda</span>
+                  <span class="label">${escapeHtml(data.date)}</span>
+                </div>
+                <span class="value value--xlarge">${escapeHtml(data.time)}</span>
               </div>
-              <span class="label">${escapeHtml(data.date)}</span>
               <div class="divider"></div>
-              <div class="flex flex--col gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="520">
+              <div class="flex flex--col flex--stretch-x gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="575">
+                <span class="label label--small">TODAY</span>
                 ${todayItems}
-              </div>
-            </section>
-
-            <section class="flex flex--col flex--stretch-x gap--small">
-              <span class="title">Apple Reminders</span>
-              <span class="label">Open tasks</span>
-              <div class="divider"></div>
-              <div class="flex flex--col gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="520">
-                ${reminders}
-              </div>
-            </section>
-
-            <section class="flex flex--col flex--stretch-x gap--small">
-              <span class="title">Upcoming Calendar</span>
-              <span class="label">Next 7 days</span>
-              <div class="divider"></div>
-              <div class="flex flex--col gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="520">
+                <div class="divider"></div>
+                <span class="label label--small">UPCOMING</span>
                 ${upcoming}
+              </div>
+            </section>
+
+            <section class="col--span-5 flex flex--col flex--stretch-x gap--medium">
+              <div class="flex flex--col flex--stretch-x gap--small">
+                <div class="flex flex--row flex--between flex--center-y">
+                  <span class="title">Weather</span>
+                  <span class="label">${escapeHtml(data.weather.location)}</span>
+                </div>
+                <div class="divider"></div>
+                <div class="flex flex--row flex--between flex--center-y">
+                  <span class="value value--mega">${escapeHtml(data.weather.temperature)}</span>
+                  <div class="flex flex--col flex--right">
+                    <span class="title" data-clamp="2">${escapeHtml(data.weather.condition)}</span>
+                    <span class="description">Right now</span>
+                  </div>
+                </div>
+                <div class="divider"></div>
+              </div>
+
+              <div class="flex flex--col flex--stretch-x gap--small">
+                <div class="flex flex--row flex--between flex--center-y">
+                  <span class="title">Apple Reminders</span>
+                  <span class="label">Open tasks</span>
+                </div>
+                <div class="divider"></div>
+                <div class="flex flex--col flex--stretch-x gap--small" data-overflow="true" data-overflow-counter="true" data-overflow-max-height="330">
+                  ${reminders}
+                </div>
               </div>
             </section>
           </div>
@@ -128,7 +145,7 @@ function renderDashboardHtml(data, { preview = false, assetBaseUrl = "" } = {}) 
   <meta charset="utf-8">
   <meta name="viewport" content="width=1024, initial-scale=1">
   <title>Kobo Dashboard · TRMNL Framework</title>
-  <link rel="stylesheet" href="${escapeHtml(base)}/trmnl/plugins.min.css">
+  <link rel="stylesheet" href="${escapeHtml(base)}/trmnl/plugins.min.css" crossorigin="anonymous">
   <style>
     html, body { margin: 0; }
     body { background: ${preview ? "#d8d8d8" : "#fff"}; }

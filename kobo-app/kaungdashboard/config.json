@@ -1,0 +1,11 @@
+{
+  "Orientation": "landscape-right",
+  "StartPage": "home",
+  "WrapPages": false,
+  "KanbanCycleDoneToTodo": false,
+  "PartialRefresh": true,
+  "SwipeThreshold": 120,
+  "TapSlop": 28,
+  "CornerExitHoldSeconds": 3,
+  "Debug": true
+}

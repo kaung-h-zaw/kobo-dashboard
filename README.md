@@ -6,6 +6,8 @@ This project turns a Kobo Nia running the native `usetrmnl/trmnl-kobo` client in
 
 The dashboard UI uses the official **TRMNL Framework 3.2.0** rather than project-specific imitation CSS. Its CSS, JavaScript runtime, and TRMNL font files are committed under `public/`, so a deployed screen never depends on a CDN. Headless Chromium renders that real framework page to a PNG; this is the same general rendering approach used by TRMNL's official Node BYOS example.
 
+The landscape composition is inspired by the dense plugin mashups shown in the official `trmnl-kobo` repository: a wide agenda occupies the left side, with a large current-weather module and Apple Reminders on the right. The Kobo client itself does not contain that layout; this server creates it using Framework Grid, Flex, Item, typography, divider, clamp, overflow, and title-bar primitives.
+
 There is no Docker, database, Redis, background worker, Apple password, private Apple API, or iCloud scraping.
 
 Routes:
@@ -374,3 +376,13 @@ Use authenticated `/api/apple-data` as shown in the manual test section. An unau
 - `.env`, Apple data, Swift build products, and local secrets are ignored by git.
 
 Official Apple references used for the helper: [Accessing the event store](https://developer.apple.com/documentation/eventkit/accessing-the-event-store), [Retrieving events and reminders](https://developer.apple.com/documentation/eventkit/retrieving-events-and-reminders), and [`EKCalendar`](https://developer.apple.com/documentation/eventkit/ekcalendar).
+
+## 13. Local interactive KOReader plugin (Version 1)
+
+A new, independent local dashboard is available under [`kobo-plugin/`](kobo-plugin/README.md). It runs as a custom KOReader plugin, uses five separate fullscreen pages with horizontal swipe navigation, and includes touch interactions for mock reminders and a stacked Kanban board.
+
+This Version 1 plugin makes no network requests and does not alter or replace the Render server, macOS sync helper, or TRMNL client described above. See the plugin README for exact copy/install, configuration, testing, and uninstall instructions.
+
+## 14. Standalone NickelMenu dashboard
+
+The newer standalone direction is under [`kobo-app/`](kobo-app/README.md). It launches directly from NickelMenu, uses bundled LuaJIT and FBInk executables, reads Kobo Nia touch events without KOReader, and returns to Nickel on exit. Version 1 remains fully local and offline.

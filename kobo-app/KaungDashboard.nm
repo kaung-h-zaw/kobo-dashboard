@@ -1,0 +1,2 @@
+# NickelMenu configuration
+menu_item :main :Kaung Dashboard :cmd_spawn :quiet:/mnt/onboard/.adds/kaungdashboard/start.sh
