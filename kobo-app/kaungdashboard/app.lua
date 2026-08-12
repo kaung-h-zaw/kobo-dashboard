@@ -78,7 +78,10 @@ local function handle_tap(x, y)
                 request_fetch()
             elseif target.kind == "reminder" then
                 local item = state:toggleReminder(target.id)
-                if item then pages.reminders.redrawReminder(renderer, item) end
+                if item then
+                    pages.reminders.redrawReminder(renderer, item)
+                    api:setReminderCompleted(item.id, item.completed)
+                end
             elseif target.kind == "kanban" and state:advanceKanban(target.id) then
                 render_page()
             end
@@ -119,7 +122,12 @@ while running do
                 logger:info("Exit requested: " .. gesture.reason)
                 running = false
             elseif gesture.kind == "swipe" then
-                change_page(gesture.direction == "left" and 1 or -1)
+                if state.currentPage == "reminders" and (gesture.direction == "up" or gesture.direction == "down") then
+                    pages.reminders.scroll(renderer, state, gesture.direction == "up" and 1 or -1,
+                        navigation.index, #page_order)
+                elseif gesture.direction == "left" or gesture.direction == "right" then
+                    change_page(gesture.direction == "left" and 1 or -1)
+                end
             elseif gesture.kind == "tap" then
                 handle_tap(gesture.x, gesture.y)
             end

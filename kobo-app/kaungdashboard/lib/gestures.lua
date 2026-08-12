@@ -24,6 +24,9 @@ function Gestures:feed(event)
     if math.abs(dx) >= self.config.SwipeThreshold and math.abs(dx) > math.abs(dy) * 1.4 then
         return { kind = "swipe", direction = dx < 0 and "left" or "right" }
     end
+    if math.abs(dy) >= self.config.SwipeThreshold and math.abs(dy) > math.abs(dx) * 1.4 then
+        return { kind = "swipe", direction = dy < 0 and "up" or "down" }
+    end
     if math.abs(dx) <= self.config.TapSlop and math.abs(dy) <= self.config.TapSlop then
         return { kind = "tap", x = event.x, y = event.y }
     end

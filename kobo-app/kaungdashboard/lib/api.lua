@@ -27,6 +27,11 @@ local function trim(value)
     return value and value:match("^%s*(.-)%s*$") or ""
 end
 
+local function json_string(value)
+    return '"' .. tostring(value):gsub('\\', '\\\\'):gsub('"', '\\"')
+        :gsub('\n', '\\n'):gsub('\r', '\\r'):gsub('\t', '\\t') .. '"'
+end
+
 local function fingerprint(data)
     local parts = { tostring(data.syncedAt or "") }
     local weather = data.weather or {}
@@ -106,6 +111,25 @@ function Api:startFetch()
     if self.fetching then self.logger:info("Remote data fetch started")
     else self.logger:error("Unable to start remote data fetch") end
     return self.fetching
+end
+
+function Api:setReminderCompleted(id, completed)
+    if not self.enabled then
+        self.logger:error("Reminder completion not sent: remote data is disabled")
+        return false
+    end
+    local payload = '{"id":' .. json_string(id) .. ',"completed":' .. tostring(completed == true) .. '}'
+    local curl = "curl --fail --silent --show-error --location --connect-timeout 10 --max-time 30"
+        .. " -X POST -H " .. shell_quote("access-token: " .. self.token)
+        .. " -H " .. shell_quote("Content-Type: application/json")
+        .. " --data " .. shell_quote(payload)
+        .. " " .. shell_quote(self.url:gsub("/device%-data/?$", "/reminder-actions"))
+    local command = "(" .. curl .. " >>" .. shell_quote(self.logger.path) .. " 2>&1"
+        .. " && echo ' reminder action queued' >>" .. shell_quote(self.logger.path)
+        .. ") >/dev/null 2>&1 &"
+    local result = os.execute(command)
+    self.logger:info("Reminder completion upload started: " .. tostring(id) .. " completed=" .. tostring(completed))
+    return result == true or result == 0
 end
 
 function Api:poll()

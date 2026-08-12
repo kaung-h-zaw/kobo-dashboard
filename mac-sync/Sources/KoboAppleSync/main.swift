@@ -36,6 +36,19 @@ struct SyncResponse: Decodable {
     let events: Int
 }
 
+struct ReminderAction: Decodable {
+    let id: String
+    let completed: Bool
+}
+
+struct ReminderActionsResponse: Decodable {
+    let actions: [ReminderAction]
+}
+
+struct ReminderActionAcknowledgement: Encodable {
+    let ids: [String]
+}
+
 enum SyncError: LocalizedError {
     case missingSecret
     case invalidServerURL
@@ -253,6 +266,27 @@ final class AppleDataReader {
             }
     }
 
+    func applyReminderActions(_ actions: [ReminderAction]) throws -> [String] {
+        var applied: [String] = []
+        for action in actions {
+            guard let reminder = store.calendarItem(withIdentifier: action.id) as? EKReminder else {
+                print("Reminder action skipped; identifier was not found: \(action.id)")
+                applied.append(action.id)
+                continue
+            }
+            reminder.isCompleted = action.completed
+            reminder.completionDate = action.completed ? Date() : nil
+            do {
+                try store.save(reminder, commit: true)
+                applied.append(action.id)
+                print("Reminder completion applied: \(reminder.title ?? action.id) = \(action.completed)")
+            } catch {
+                throw SyncError.eventKit("Could not update reminder \(action.id): \(error.localizedDescription)")
+            }
+        }
+        return applied
+    }
+
     func readEvents() throws -> [EventPayload] {
         let start = calendar.startOfDay(for: Date())
         guard let end = calendar.date(byAdding: .day, value: 8, to: start) else {
@@ -293,6 +327,45 @@ final class AppleDataReader {
         if due < tomorrow { return 1 }
         if due < sevenDays { return 2 }
         return 3
+    }
+}
+
+func fetchReminderActions(configuration: Configuration) async throws -> [ReminderAction] {
+    let endpoint = configuration.serverURL.appendingPathComponent("api/reminder-actions")
+    var request = URLRequest(url: endpoint)
+    request.setValue("Bearer \(configuration.secret)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 30
+    do {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw SyncError.malformedResponse }
+        guard (200..<300).contains(httpResponse.statusCode) else { throw SyncError.server(httpResponse.statusCode) }
+        return try JSONDecoder().decode(ReminderActionsResponse.self, from: data).actions
+    } catch let error as SyncError {
+        throw error
+    } catch _ as DecodingError {
+        throw SyncError.malformedResponse
+    } catch {
+        throw SyncError.network(error.localizedDescription)
+    }
+}
+
+func acknowledgeReminderActions(_ ids: [String], configuration: Configuration) async throws {
+    guard !ids.isEmpty else { return }
+    let endpoint = configuration.serverURL.appendingPathComponent("api/reminder-actions/ack")
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(configuration.secret)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 30
+    request.httpBody = try JSONEncoder().encode(ReminderActionAcknowledgement(ids: ids))
+    do {
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else { throw SyncError.malformedResponse }
+        guard (200..<300).contains(httpResponse.statusCode) else { throw SyncError.server(httpResponse.statusCode) }
+    } catch let error as SyncError {
+        throw error
+    } catch {
+        throw SyncError.network(error.localizedDescription)
     }
 }
 
@@ -339,6 +412,15 @@ func runKoboAppleSync() async -> Int32 {
         if configuration.permissionsOnly {
             print("EventKit permission check complete.")
             return 0
+        }
+
+        if !configuration.dryRun {
+            let actions = try await fetchReminderActions(configuration: configuration)
+            if !actions.isEmpty {
+                print("Found \(actions.count) pending reminder actions")
+                let applied = try reader.applyReminderActions(actions)
+                try await acknowledgeReminderActions(applied, configuration: configuration)
+            }
         }
 
         let reminders = try await reader.readReminders()

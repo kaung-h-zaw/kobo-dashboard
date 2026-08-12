@@ -96,6 +96,17 @@ Reminders.redrawReminder(renderer, state.reminders[1])
 renderer:updateReload(true)
 renderer:updateReload(false)
 
+for index = 6, 12 do
+    state.reminders[#state.reminders + 1] = {
+        id = "reminder-" .. index, group = "TODAY", title = "Scrollable reminder " .. index,
+        completed = false,
+    }
+end
+Reminders.batch = 1
+assert(Reminders.scroll(renderer, state, 1, 5, #page_names), "reminder list did not scroll to its second batch")
+assert(Reminders.rows["reminder-8"], "second reminder batch was not rendered")
+assert(Reminders.scroll(renderer, state, -1, 5, #page_names), "reminder list did not scroll back")
+
 local Navigation = require("navigation")
 local navigation = Navigation.new(page_names, "weather", true)
 local _, wrapped_back = navigation:move(-1)

@@ -15,6 +15,7 @@ const {
 } = require("./src/appleData");
 const { buildDashboardData, buildPreviewAppleData } = require("./src/dashboard");
 const { buildDeviceData } = require("./src/deviceData");
+const { acknowledgeActions, queueAction, readActions } = require("./src/reminderActions");
 const { getWeather } = require("./src/weather");
 const {
   generateDashboardPng,
@@ -189,6 +190,28 @@ app.get("/api/device-data", requireDeviceAuthentication, async (request, respons
   response
     .set("Cache-Control", "private, no-store")
     .json(buildDeviceData(dashboard, { generatedAt: now }));
+});
+
+app.post("/api/reminder-actions", requireDeviceAuthentication, async (request, response) => {
+  try {
+    const action = await queueAction(request.body);
+    response.status(202).json({ status: "queued", id: action.id, completed: action.completed });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/api/reminder-actions", requireAppleDataAuthentication, async (request, response) => {
+  response.set("Cache-Control", "no-store").json({ actions: await readActions() });
+});
+
+app.post("/api/reminder-actions/ack", requireAppleDataAuthentication, async (request, response) => {
+  try {
+    const acknowledged = await acknowledgeActions(request.body?.ids);
+    response.json({ status: "ok", acknowledged });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
 });
 
 // Official TRMNL KOReader clients fetch screen metadata from this endpoint.
