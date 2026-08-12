@@ -37,8 +37,8 @@ function Calendar.draw(renderer, state, index, count)
     end
 
     renderer:panel(694, 86, 306, 610, "Today")
-    renderer:text(os.date("%d %b"):upper(), 718, 150, 3, { bold = true })
-    renderer:text(os.date("%A"):upper(), 718, 206, 2, { color = "GRAY5" })
+    renderer:text(os.date("%d %b"):upper(), 718, 154, 2, { bold = true })
+    renderer:text(os.date("%A"):upper(), 718, 194, 1, { color = "GRAY5" })
     renderer:line(718, 238, 258, 1, "GRAY8")
 
     local events = state.events

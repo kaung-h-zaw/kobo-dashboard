@@ -86,7 +86,7 @@ function Renderer:beginPage(title, index, count)
     self:fill(24, 12, 96, 42, "BLACK")
     self:text("EXIT", 40, 22, 2, { bold = true, color = "WHITE" })
     self:addTarget("exit", "exit", 12, 2, 120, 64)
-    self:text(title:upper(), 150, 19, 3, { bold = true })
+    self:text(self:clip(title:upper(), 14), 150, 22, 2, { bold = true })
     self:drawReload(false)
     self:addTarget("reload", "reload", 624, 2, 76, 64)
     self:text(os.date("%a %d %b"):upper(), 742, 23, 2, { color = "GRAY5" })
@@ -112,9 +112,9 @@ function Renderer:footer(page_name)
     local y = self.screen.height - 42
     self:fill(0, y, self.screen.width, 42, "GRAY2")
     self:line(0, y, self.screen.width, 1, "BLACK")
-    self:text(page_name:upper(), 24, y + 8, 2, { bold = true })
-    self:text("SWIPE TO NAVIGATE", 408, y + 8, 2, { color = "GRAY6" })
-    self:text(self.page_index .. " / " .. self.page_count, 936, y + 8, 2, { bold = true })
+    self:text(page_name:upper(), 24, y + 8, 2, { bold = true, color = "WHITE" })
+    self:text("SWIPE TO NAVIGATE", 408, y + 8, 2, { color = "WHITE" })
+    self:text(self.page_index .. " / " .. self.page_count, 936, y + 8, 2, { bold = true, color = "WHITE" })
 end
 
 function Renderer:endPage(page_name)
@@ -138,7 +138,9 @@ function Renderer:drawReminderRow(item, rect, register_target)
     local box_x, title_x = rect.x + 12, rect.x + 58
     local box_y = rect.y + 17
     self:box(box_x, box_y, 30, 30, 2)
-    if item.completed then self:text("X", box_x + 7, box_y + 5, 2, { bold = true }) end
+    if item.completed then
+        self:image(self.screen.app_dir .. "/assets/icon-check.png", box_x + 4, box_y + 4, 22, 22)
+    end
     local title_rect = self:text(self:clip(item.title, 23), title_x, rect.y + 17, 2, {
         bold = true,
         color = item.completed and "GRAY7" or "BLACK",
