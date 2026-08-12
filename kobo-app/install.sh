@@ -58,6 +58,19 @@ TARGET="${KOBO_MOUNT}/.adds/kaungdashboard"
 mkdir -p "${TARGET}/bin" "${TARGET}/ffi" "${TARGET}/lua" "${TARGET}/scripts" \
     "${TARGET}/licenses" "${KOBO_MOUNT}/.adds/nm"
 cp -R "${SCRIPT_DIR}/kaungdashboard/." "${TARGET}/"
+
+# Provision the standalone app with the same private key used by the deployed
+# server. The file is ignored by git and is never printed by this installer.
+if [ ! -s "${TARGET}/device-token" ]; then
+    ROOT_CONFIG="${SCRIPT_DIR}/../.env.example"
+    if [ -f "${ROOT_CONFIG}" ]; then
+        DEVICE_KEY="$(sed -n 's/^DEVICE_API_KEY=//p' "${ROOT_CONFIG}" | head -n 1)"
+        if [ -n "${DEVICE_KEY}" ]; then
+            printf '%s\n' "${DEVICE_KEY}" >"${TARGET}/device-token"
+            chmod 600 "${TARGET}/device-token"
+        fi
+    fi
+fi
 cp "${SOURCE_BIN}/luajit" "${TARGET}/bin/luajit"
 cp "${SOURCE_BIN}/fbink/fbink" "${TARGET}/bin/fbink"
 cp "${SOURCE_BIN}/fbink/fbdepth" "${TARGET}/bin/fbdepth"
