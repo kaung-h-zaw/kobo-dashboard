@@ -40,6 +40,8 @@ function State.new(path, config, logger)
         events = copy(event_defaults),
         upcomingEvents = {},
         savedReminderStates = {},
+        completedReminderArchive = {},
+        reminderOverrides = {},
         remoteSyncedAt = "NOT CONNECTED",
     }, State)
     self:load()
@@ -52,11 +54,35 @@ function State:load()
     local ok, saved = pcall(dofile, self.path)
     if not ok or type(saved) ~= "table" then return end
     local reminders = saved.reminders or {}
+    local completed_reminders = saved.completedReminders or {}
+    local reminder_overrides = saved.reminderOverrides or {}
     local kanban = saved.kanbanItems or {}
     for _, item in ipairs(self.reminders) do
         if type(reminders[item.id]) == "boolean" then item.completed = reminders[item.id] end
     end
     self.savedReminderStates = reminders
+    for id, item in pairs(completed_reminders) do
+        if type(id) == "string" and type(item) == "table" and type(item.title) == "string" then
+            local archived = {
+                id = id,
+                group = "COMPLETED",
+                title = item.title,
+                due = type(item.due) == "string" and item.due or nil,
+                completed = true,
+            }
+            self.completedReminderArchive[id] = archived
+            self.reminders[#self.reminders + 1] = archived
+        end
+    end
+    for id, override in pairs(reminder_overrides) do
+        if type(id) == "string" and type(override) == "table"
+            and type(override.completed) == "boolean" and type(override.changedAt) == "number" then
+            self.reminderOverrides[id] = {
+                completed = override.completed,
+                changedAt = override.changedAt,
+            }
+        end
+    end
     for _, item in ipairs(self.kanbanItems) do
         local status = kanban[item.id]
         if status == "todo" or status == "in_progress" or status == "done" then item.status = status end
@@ -107,21 +133,46 @@ function State:applyRemote(data)
     if #self.weather.forecast == 0 then self.weather.forecast = copy(weather_default.forecast) end
 
     local reminders = {}
+    local seen = {}
+    local now = os.time()
     for _, item in ipairs(data.reminders) do
         if type(item) == "table" and type(item.id) == "string" and type(item.title) == "string" then
-            reminders[#reminders + 1] = {
+            local completed = item.completed == true
+            local override = self.reminderOverrides[item.id]
+            if override then
+                if completed == override.completed then
+                    self.reminderOverrides[item.id] = nil
+                elseif now - override.changedAt <= 120 then
+                    completed = override.completed
+                else
+                    self.reminderOverrides[item.id] = nil
+                end
+            end
+            local normalized = {
                 id = item.id,
-                group = item.group == "COMPLETED" and "COMPLETED" or (item.group == "UPCOMING" and "UPCOMING" or "TODAY"),
+                group = completed and "COMPLETED" or (item.group == "UPCOMING" and "UPCOMING" or "TODAY"),
                 title = item.title,
                 due = type(item.due) == "string" and item.due or nil,
-                completed = self.savedReminderStates[item.id] == true or item.completed == true,
+                completed = completed,
             }
+            reminders[#reminders + 1] = normalized
+            seen[item.id] = true
+            if completed then
+                self.completedReminderArchive[item.id] = normalized
+            else
+                self.completedReminderArchive[item.id] = nil
+            end
         end
+    end
+    -- Keep completed rows visible if Apple's next snapshot temporarily omits them.
+    for id, item in pairs(self.completedReminderArchive) do
+        if not seen[id] then reminders[#reminders + 1] = item end
     end
     self.reminders = reminders
     self.events = remote_events(data.events)
     self.upcomingEvents = remote_events(data.upcomingEvents)
     self.remoteSyncedAt = type(data.syncedAt) == "string" and data.syncedAt or "UNKNOWN"
+    self:save()
     self.logger:info("Applied remote data: reminders=" .. #self.reminders .. " events=" .. #self.events)
     return true
 end
@@ -151,6 +202,17 @@ function State:save()
     for _, item in ipairs(self.reminders) do
         file:write("    [", quoted(item.id), "] = ", tostring(item.completed), ",\n")
     end
+    file:write("  },\n  completedReminders = {\n")
+    for id, item in pairs(self.completedReminderArchive) do
+        file:write("    [", quoted(id), "] = { title = ", quoted(item.title))
+        if item.due then file:write(", due = ", quoted(item.due)) end
+        file:write(" },\n")
+    end
+    file:write("  },\n  reminderOverrides = {\n")
+    for id, override in pairs(self.reminderOverrides) do
+        file:write("    [", quoted(id), "] = { completed = ", tostring(override.completed),
+            ", changedAt = ", tostring(override.changedAt), " },\n")
+    end
     file:write("  },\n  kanbanItems = {\n")
     for _, item in ipairs(self.kanbanItems) do
         file:write("    [", quoted(item.id), "] = ", quoted(item.status), ",\n")
@@ -168,6 +230,14 @@ function State:toggleReminder(id)
         if item.id == id then
             item.completed = not item.completed
             self.savedReminderStates[id] = item.completed
+            self.reminderOverrides[id] = { completed = item.completed, changedAt = os.time() }
+            if item.completed then
+                item.group = "COMPLETED"
+                self.completedReminderArchive[id] = item
+            else
+                item.group = "TODAY"
+                self.completedReminderArchive[id] = nil
+            end
             self:save()
             self.logger:info("Reminder toggled: " .. id .. " completed=" .. tostring(item.completed))
             return item
