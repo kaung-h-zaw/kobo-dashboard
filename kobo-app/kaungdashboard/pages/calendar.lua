@@ -10,7 +10,12 @@ function Calendar.draw(renderer, state, index, count)
     renderer:beginPage(Calendar.title, index, count)
     local now = os.date("*t")
 
-    renderer:panel(24, 86, 650, 610, months[now.month] .. " " .. now.year)
+    -- Keep the calendar identity away from the far-left display edge, which can
+    -- be hidden by the Nia's landscape viewport/bezel on some rotations.
+    renderer:panel(24, 86, 650, 610)
+    renderer:text("CALENDAR", 190, 104, 2, { bold = true })
+    renderer:text(months[now.month] .. " " .. now.year, 382, 104, 2, { bold = true })
+    renderer:line(25, 132, 648, 1, "GRAY8")
     local grid_x, grid_y, cell_w, cell_h = 40, 188, 88, 76
     for column, weekday in ipairs(weekdays) do
         renderer:label(weekday, grid_x + (column - 1) * cell_w + 28, 156, { scale = 1 })
