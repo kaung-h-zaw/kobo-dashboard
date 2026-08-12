@@ -11,7 +11,7 @@
     <key>WorkingDirectory</key>
     <string>/Users/kaunghtetzaw/kobo-dashboard/mac-sync</string>
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>10</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>

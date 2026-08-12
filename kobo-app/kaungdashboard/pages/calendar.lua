@@ -29,8 +29,8 @@ function Calendar.draw(renderer, state, index, count)
         local column, row = slot % 7, math.floor(slot / 7)
         local x, y = grid_x + column * cell_w, grid_y + row * cell_h
         if day == now.day then
-            renderer:fill(x + 8, y + 10, 44, 38, "BLACK")
-            renderer:text(tostring(day), x + 16, y + 19, 2, { bold = true, color = "WHITE" })
+            renderer:fill(x + 8, y + 8, 48, 48, "BLACK")
+            renderer:text(tostring(day), x + 16, y + 14, 2, { bold = true, color = "WHITE" })
         else
             renderer:text(tostring(day), x + 12, y + 18, 2, { bold = true })
         end

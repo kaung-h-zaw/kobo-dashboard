@@ -7,7 +7,7 @@ function deviceWeather(weather) {
   const fallbackForecast = [];
   const forecast = Array.isArray(weather?.forecast) ? weather.forecast : fallbackForecast;
   return {
-    location: einkText(weather?.location, "Bangkok"),
+    location: einkText(weather?.location, "Prawet District"),
     temperature: einkText(weather?.temperature, "31 C"),
     condition: einkText(weather?.condition, "Partly Cloudy"),
     apparentTemperature: einkText(weather?.apparentTemperature || weather?.temperature, "31 C"),

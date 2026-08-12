@@ -16,6 +16,7 @@ const {
 const { buildDashboardData, buildPreviewAppleData } = require("./src/dashboard");
 const { buildDeviceData } = require("./src/deviceData");
 const { acknowledgeActions, queueAction, readActions } = require("./src/reminderActions");
+const { completeSyncRequest, createSyncRequest, readSyncRequest } = require("./src/syncRequest");
 const { getWeather } = require("./src/weather");
 const {
   generateDashboardPng,
@@ -168,6 +169,7 @@ app.post("/api/apple-sync", requireAppleSyncAuthentication, async (request, resp
   }
 
   await writeAppleData(data);
+  await completeSyncRequest();
   queueScreenRefresh("Apple sync");
   response.json({
     status: "ok",
@@ -192,9 +194,23 @@ app.get("/api/device-data", requireDeviceAuthentication, async (request, respons
     .json(buildDeviceData(dashboard, { generatedAt: now }));
 });
 
+app.post("/api/sync-request", requireDeviceAuthentication, async (request, response) => {
+  const syncRequest = await createSyncRequest();
+  response.status(202).json({ status: "waiting", ...syncRequest });
+});
+
+app.get("/api/sync-request", requireAppleDataAuthentication, async (request, response) => {
+  const syncRequest = await readSyncRequest();
+  response.set("Cache-Control", "no-store").json({
+    status: syncRequest?.completedAt ? "complete" : "waiting",
+    ...(syncRequest || {}),
+  });
+});
+
 app.post("/api/reminder-actions", requireDeviceAuthentication, async (request, response) => {
   try {
     const action = await queueAction(request.body);
+    await createSyncRequest();
     response.status(202).json({ status: "queued", id: action.id, completed: action.completed });
   } catch (error) {
     response.status(400).json({ error: error.message });

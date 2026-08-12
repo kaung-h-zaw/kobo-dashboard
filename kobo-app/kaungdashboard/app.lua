@@ -57,8 +57,8 @@ local function change_page(delta)
     render_page()
 end
 
-local function request_fetch()
-    if api:startFetch() then
+local function request_fetch(force_sync)
+    if api:startFetch(force_sync) then
         last_fetch_started = os.time()
         renderer:updateReload(true)
         return true
@@ -75,7 +75,7 @@ local function handle_tap(x, y)
                 running = false
             elseif target.kind == "reload" then
                 logger:info("Manual reload requested")
-                request_fetch()
+                request_fetch(true)
             elseif target.kind == "reminder" then
                 local item = state:toggleReminder(target.id)
                 if item then

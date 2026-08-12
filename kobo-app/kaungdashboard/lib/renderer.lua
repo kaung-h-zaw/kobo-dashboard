@@ -83,8 +83,7 @@ end
 function Renderer:beginPage(title, index, count)
     self.targets = {}
     self.screen:clear(true)
-    self:fill(24, 12, 96, 42, "BLACK")
-    self:text("EXIT", 40, 22, 2, { bold = true, color = "WHITE" })
+    self:image(self.screen.app_dir .. "/assets/header-exit.png", 24, 9, 96, 48)
     self:addTarget("exit", "exit", 12, 2, 120, 64)
     self:text(self:clip(title:upper(), 14), 150, 22, 2, { bold = true })
     self:drawReload(false)

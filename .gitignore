@@ -8,6 +8,7 @@ render-chrome/
 npm-debug.log*
 data/apple-data.json
 data/reminder-actions.json
+data/sync-request.json
 mac-sync/.build/
 kobo-app/kaungdashboard/assets/wifi-24ghz.png
 kobo-app/kaungdashboard/assets/wifi-5ghz.png

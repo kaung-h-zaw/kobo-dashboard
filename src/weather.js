@@ -1,5 +1,5 @@
 const FALLBACK_WEATHER = Object.freeze({
-  location: "Bangkok",
+  location: "Prawet District",
   temperature: "31°C",
   condition: "Partly Cloudy",
   apparentTemperature: "34°C",
@@ -41,9 +41,9 @@ function environmentNumber(name, fallback) {
 }
 
 async function fetchWeather() {
-  const location = process.env.WEATHER_LOCATION?.trim() || FALLBACK_WEATHER.location;
-  const latitude = environmentNumber("WEATHER_LATITUDE", 13.7563);
-  const longitude = environmentNumber("WEATHER_LONGITUDE", 100.5018);
+  const location = process.env.WEATHER_LOCATION?.trim() || "Prawet District";
+  const latitude = environmentNumber("WEATHER_LATITUDE", 13.717);
+  const longitude = environmentNumber("WEATHER_LONGITUDE", 100.694);
   const timeZone = process.env.TIMEZONE || "Asia/Bangkok";
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(latitude));

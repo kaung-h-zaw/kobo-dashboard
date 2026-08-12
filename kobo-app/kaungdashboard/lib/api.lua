@@ -94,7 +94,7 @@ function Api:loadCache()
     return data
 end
 
-function Api:startFetch()
+function Api:startFetch(force_sync)
     if not self.enabled or self.fetching then return false end
     self:flushReminderActions()
     os.remove(self.download_path)
@@ -106,11 +106,25 @@ function Api:startFetch()
         .. " -o " .. shell_quote(self.download_path)
         .. " " .. shell_quote(self.url)
     local connect_wifi = "sh " .. shell_quote(self.app_dir .. "/connect-wifi.sh") .. " >/dev/null 2>&1 || true; "
-    local worker = connect_wifi .. curl .. "; result=$?; echo $result > " .. shell_quote(self.status_path)
+    local sync_wait = ""
+    if force_sync then
+        local sync_url = self.url:gsub("/device%-data/?$", "/sync-request")
+        local sync_status = "/tmp/kaungdashboard-sync-request.json"
+        sync_wait = "curl --fail --silent --location --connect-timeout 5 --max-time 10 -X POST"
+            .. " -H " .. shell_quote("access-token: " .. self.token)
+            .. " -o " .. shell_quote(sync_status) .. " " .. shell_quote(sync_url) .. " || true; "
+            .. "attempt=0; while [ $attempt -lt 12 ]; do sleep 2; "
+            .. "curl --fail --silent --location --connect-timeout 5 --max-time 10"
+            .. " -H " .. shell_quote("access-token: " .. self.token)
+            .. " -o " .. shell_quote(sync_status) .. " " .. shell_quote(sync_url) .. " || true; "
+            .. "grep -q '\"status\":\"complete\"' " .. shell_quote(sync_status) .. " 2>/dev/null && break; "
+            .. "attempt=$((attempt + 1)); done; rm -f " .. shell_quote(sync_status) .. "; "
+    end
+    local worker = connect_wifi .. sync_wait .. curl .. "; result=$?; echo $result > " .. shell_quote(self.status_path)
     local launch = "(" .. worker .. ") >/dev/null 2>&1 & echo $! > " .. shell_quote(self.pid_path)
     local result = os.execute(launch)
     self.fetching = result == true or result == 0
-    if self.fetching then self.logger:info("Remote data fetch started")
+    if self.fetching then self.logger:info(force_sync and "End-to-end reload started" or "Remote data fetch started")
     else self.logger:error("Unable to start remote data fetch") end
     return self.fetching
 end
