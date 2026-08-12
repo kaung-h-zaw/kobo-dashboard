@@ -84,6 +84,16 @@ function Screen:drawText(text, x, y, scale, options)
     return rect
 end
 
+function Screen:drawImage(path, x, y, width, height)
+    local geometry = "x=" .. math.floor(x) .. ",y=" .. math.floor(y)
+    if width and height then
+        geometry = geometry .. ",w=" .. math.floor(width) .. ",h=" .. math.floor(height)
+    end
+    local command = shell_quote(self.fbink) .. " -q -b -W GC16 -i " .. shell_quote(path)
+        .. " -g " .. shell_quote(geometry)
+    return self:command(command)
+end
+
 function Screen:rawToLogical(raw_x, raw_y, ranges)
     local function normalize(value, minimum, maximum, target_max)
         if maximum <= minimum then return value end

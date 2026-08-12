@@ -18,11 +18,12 @@ local state = State.new(app_dir .. "/state-data.lua", config, logger)
 local renderer = Renderer.new(screen)
 local gestures = Gestures.new(config)
 
-local page_order = { "weather", "calendar", "home", "reminders", "kanban" }
+local page_order = { "weather", "calendar", "home", "wifi", "reminders", "kanban" }
 local pages = {
     weather = require("weather"),
     calendar = require("calendar"),
     home = require("home"),
+    wifi = require("wifi"),
     reminders = require("reminders"),
     kanban = require("kanban"),
 }
@@ -30,10 +31,12 @@ local pages = {
 local navigation = Navigation.new(page_order, state.currentPage, config.WrapPages)
 local targets = {}
 local running = true
+local clock_partial_count = 0
 
 local function render_page()
     state.currentPage = navigation:current()
     targets = pages[state.currentPage].draw(renderer, state, navigation.index, #page_order)
+    clock_partial_count = 0
 end
 
 local function contains(target, x, y)
@@ -79,6 +82,11 @@ if not ok then
 end
 local input = input_or_error
 local stop_file = "/tmp/kaungdashboard.stop"
+local refresh_minutes = math.max(1, tonumber(config.ClockRefreshMinutes) or 1)
+local full_refresh_minutes = math.max(refresh_minutes, tonumber(config.FullRefreshMinutes) or 15)
+local full_refresh_after = math.max(1, math.floor(full_refresh_minutes / refresh_minutes))
+local last_clock_bucket = math.floor(os.time() / (refresh_minutes * 60))
+local last_day = os.date("%Y%m%d")
 
 while running do
     local stop = io.open(stop_file, "r")
@@ -96,6 +104,20 @@ while running do
                 handle_tap(gesture.x, gesture.y)
             end
         end
+    end
+    local clock_bucket = math.floor(os.time() / (refresh_minutes * 60))
+    if clock_bucket ~= last_clock_bucket then
+        last_clock_bucket = clock_bucket
+        local day = os.date("%Y%m%d")
+        if state.currentPage == "home" and day ~= last_day then
+            render_page()
+        else
+            clock_partial_count = clock_partial_count + 1
+            local force_full = clock_partial_count >= full_refresh_after
+            renderer:updateClock(force_full)
+            if force_full then clock_partial_count = 0 end
+        end
+        last_day = day
     end
 end
 

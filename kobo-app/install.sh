@@ -32,6 +32,14 @@ for required in "${SOURCE_BIN}/luajit" "${SOURCE_BIN}/fbink/fbink" \
     fi
 done
 
+for qr_asset in "${SCRIPT_DIR}/kaungdashboard/assets/wifi-24ghz.png" \
+    "${SCRIPT_DIR}/kaungdashboard/assets/wifi-5ghz.png"; do
+    if [ ! -f "${qr_asset}" ]; then
+        echo "Missing private Wi-Fi QR asset: ${qr_asset}"
+        exit 1
+    fi
+done
+
 TARGET="${KOBO_MOUNT}/.adds/kaungdashboard"
 mkdir -p "${TARGET}/bin" "${TARGET}/licenses" "${KOBO_MOUNT}/.adds/nm"
 cp -R "${SCRIPT_DIR}/kaungdashboard/." "${TARGET}/"

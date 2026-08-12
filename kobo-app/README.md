@@ -5,12 +5,23 @@ Version 1 is a local, offline application launched from NickelMenu. It does not 
 ## Architecture
 
 - `start.sh` prevents duplicate instances, records framebuffer state, stops Nickel cleanly, and launches the bundled LuaJIT runtime.
-- `app.lua` owns the blocking event loop and five fullscreen pages.
+- `app.lua` owns the blocking event loop and six fullscreen pages.
 - `lib/input.lua` finds the touchscreen with FBInk's `input_scan`, handles the Nia Phoenix multitouch protocol, and normalizes raw coordinates.
 - `lib/screen.lua` uses `fbdepth` canonical rotation and maps the same raw touch coordinates into the 1024×758 logical layout.
 - `lib/renderer.lua` batches FBInk text and rectangle writes before refresh.
 - `lib/state.lua` persists reminder and Kanban changes only when the user interacts.
 - `nickel.sh` restarts the Kobo interface without rebooting.
+
+## Interface system
+
+All six pages use one TRMNL-inspired monochrome system adapted for an interactive Kobo: a compact black EXIT control, small uppercase labels, large primary values, strict one-pixel panels and dividers, restrained grayscale, and a light bottom title bar. The app recreates that visual language locally and does not use TRMNL branding, hosted assets, APIs, or runtime code.
+
+- Home is a five-region mashup for date/time, weather, agenda, Kanban totals, and the daily quote.
+- Calendar pairs a large month grid with a separate agenda column.
+- Weather pairs a large current-condition panel with metric cells and a four-day forecast strip.
+- Guest Wi-Fi gives each native-resolution QR code an equal, uncluttered panel.
+- Reminders use Today and Upcoming columns with full-row touch targets.
+- Kanban uses three status columns with high-contrast headers and compact task cards.
 
 Runtime paths are fixed to:
 
@@ -78,12 +89,30 @@ No installer is run automatically by this repository.
 
 - Swipe left: next page.
 - Swipe right: previous page.
-- Page order: Weather → Calendar → Home → Reminders → Kanban.
+- Page order: Weather → Calendar → Home → Guest Wi-Fi → Reminders → Kanban.
 - First/last pages do not wrap by default.
 - Tap any reminder row to toggle completion and its measured strike-through.
 - Tap a Kanban card to advance it. Done remains Done by default.
 - Tap the visible **EXIT** button on any page to return to Nickel.
 - Backup exit: press and hold the top-left EXIT corner for three seconds.
+
+## Quote and Guest Wi-Fi
+
+Home includes a local quote-of-the-day panel. Its seven short messages rotate by calendar day and require no network connection. If Home remains open across midnight, the page redraws once to show the next quote.
+
+Guest Wi-Fi is one swipe right from Home. It shows separate, permanently saved QR codes for `Kaung_2.4G` and `Kaung_5G`. The 1-bit PNG files are drawn at their native 296×296 resolution so their module grid remains sharp. The written password is not shown, but it is encoded in each QR image. The two generated PNGs are intentionally ignored by Git and still copied to the Kobo by the installer; treat the local files in `assets/` as private credentials.
+
+The QR content is static. It is drawn only when the Guest Wi-Fi page opens and does not receive its own timed updates.
+
+## E-ink refresh cadence
+
+- The small clock region receives one partial refresh per minute.
+- A clean full-screen refresh replaces every fifteenth clock update to limit ghosting.
+- Opening the app, changing pages, changing a Kanban state, and the daily Home quote change use a full refresh.
+- Reminder completion uses the configured row-only partial refresh.
+- The Wi-Fi QR codes and other unchanged content are not redrawn every minute.
+
+Both clock values are configurable. Physical Nia testing should confirm whether the fifteen-minute cleanup cadence is comfortable.
 
 ## Configuration
 
@@ -96,6 +125,8 @@ Edit `/mnt/onboard/.adds/kaungdashboard/config.json` while connected by USB:
   "WrapPages": false,
   "KanbanCycleDoneToTodo": false,
   "PartialRefresh": true,
+  "ClockRefreshMinutes": 1,
+  "FullRefreshMinutes": 15,
   "SwipeThreshold": 120,
   "TapSlop": 28,
   "CornerExitHoldSeconds": 3,
@@ -147,3 +178,5 @@ The Mac tests syntax and state/gesture logic, but it cannot test the Nia framebu
 7. EXIT and the three-second corner hold both restore Nickel without rebooting.
 8. A forced stop or Lua error still restores framebuffer rotation and Nickel.
 9. The app remains idle without high CPU use; input polling blocks for up to 500 ms.
+10. Both Wi-Fi QR codes scan from the e-ink display and connect to the correctly labelled network.
+11. The clock updates once per minute without redrawing the QR area, and a clean refresh occurs after fifteen updates.

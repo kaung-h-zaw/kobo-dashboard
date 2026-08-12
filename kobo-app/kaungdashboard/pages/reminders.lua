@@ -1,24 +1,32 @@
 local Reminders = { name = "reminders", title = "Reminders", rows = {} }
 
-local function draw_group(renderer, state, group, y)
-    y = renderer:section(group, y)
+local function group_count(state, group)
+    local count = 0
+    for _, item in ipairs(state.reminders) do
+        if item.group == group then count = count + 1 end
+    end
+    return count
+end
+
+local function draw_group(renderer, state, group, x, width)
+    renderer:panel(x, 86, width, 610, group)
+    renderer:text(tostring(group_count(state, group)), x + width - 46, 100, 2, { bold = true })
+    local y = 150
     for _, item in ipairs(state.reminders) do
         if item.group == group then
-            local height = item.due and 82 or 68
-            local rect = { x = 34, y = y, w = renderer.screen.width - 68, h = height }
+            local rect = { x = x + 8, y = y, w = width - 16, h = 98 }
             Reminders.rows[item.id] = rect
             renderer:drawReminderRow(item, rect, true)
-            y = y + height
+            y = y + rect.h
         end
     end
-    return y + 9
 end
 
 function Reminders.draw(renderer, state, index, count)
     renderer:beginPage(Reminders.title, index, count)
     Reminders.rows = {}
-    local y = draw_group(renderer, state, "TODAY", 88)
-    draw_group(renderer, state, "UPCOMING", y)
+    draw_group(renderer, state, "TODAY", 24, 478)
+    draw_group(renderer, state, "UPCOMING", 518, 482)
     renderer:endPage(Reminders.name)
     return renderer.targets
 end
